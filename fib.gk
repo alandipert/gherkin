@@ -1,0 +1,22 @@
+#!./gherkin -l
+(def concat
+  (fn (lst & more)
+    (if lst
+      (cons (car lst) (apply concat (cons (cdr lst) more)))
+      (if more
+        (apply concat more)))))
+
+(def partial
+  (fn (f & args)
+    (fn (& more)
+      (apply f (concat args more)))))
+      
+(def fib*
+  (fn (a b n)
+    (if (> n 0)
+      (recur b (+ a b) (- n 1))
+      a)))
+
+(def fib (partial fib* 0 1))
+ 
+(fib 60)

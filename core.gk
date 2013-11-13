@@ -1,0 +1,48 @@
+;;(ns core)
+
+(def inc
+  (fn (n) (+ n 1)))
+
+(def dec
+  (fn (n) (- n 1)))
+
+(def reduce
+  (fn (f init xs)
+    (if xs
+      (recur f (f init (car xs)) (cdr xs))
+      init)))
+
+(def identity (fn (x) x))
+
+(def every?
+  (fn (pred xs)
+    (if xs
+      (if (pred (car xs))
+        (recur pred (cdr xs)))
+      t)))
+
+(def map
+  (fn (f xs)
+    (if xs
+      (cons (f (car xs)) (map f (cdr xs))))))
+
+(def reverse
+  (fn (lst)
+    (reduce (fn (xs y) (cons y xs)) nil lst)))
+
+(def concat
+  (fn (lst & more)
+    (if lst
+      (cons (car lst) (apply concat (cons (cdr lst) more)))
+      (if more
+        (apply concat more)))))
+
+(def partial
+  (fn (f & args)
+    (fn (& more)
+      (apply f (concat args more)))))
+
+(def juxt
+  (fn (& fns)
+    (fn (arg)
+      (map (fn (f) (f arg)) fns))))

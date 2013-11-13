@@ -1,0 +1,904 @@
+#!/usr/bin/env bash
+
+# -*- mode: sh -*-
+
+if [[ "${BASH_VERSINFO[0]}" != 4 ]]; then
+  echo "bash >= 4.0.0 required" >2&
+  exit 1
+fi
+
+DEFAULT_IFS="$IFS"
+
+# function return and error slots ##############################################
+
+r=""
+e=""
+
+error() {
+  [[ -z "$e" ]] && e="$1" || e="$1\n$e"
+  r=$NIL;
+}
+
+# pushback reader ##############################################################
+
+pb_max=100
+pb_newline="$(printf '\034')"
+pb_star="$(printf '\035')"
+pb_get="^$"
+pb_unget="^$"
+
+readline() {
+  IFS=$'\n\b'
+  for ch in $(read line && echo "^${line}" | grep -o . | tail -n +2 | tr "*" "$pb_star"); do
+    pb_get="${pb_get:0:$((${#pb_get}-1))}${ch}$"
+  done
+  pb_get="${pb_get:0:$((${#pb_get}-1))}${pb_newline}$"
+  IFS="$DEFAULT_IFS"
+}
+
+getc() {
+  local ch
+  if ((${#pb_get} == 2)); then
+    readline
+    getc
+  else
+    ch="${pb_get:1:1}"
+    pb_get="^${pb_get:2}"
+    if ((pb_max > 0)); then
+      pb_unget="${pb_unget:0:$((${#pb_unget}-1))}"
+      pb_unget="^${ch}${pb_unget:1:$((pb_max-1))}$"
+    else
+      pb_unget="^${ch}${pb_unget:1}"
+    fi
+    r="$ch"
+  fi
+}
+
+ungetc() {
+  if [[ "$pb_unget" == "^$" ]]; then
+    echo "ungetc: nothing more to unget, \$pb_max=$pb_max" >&2 && return 1
+  else
+    pb_get="^${pb_unget:1:1}${pb_get:1}"
+    pb_unget="^${pb_unget:2}"
+  fi
+}
+
+# memory layout & gc ###########################################################
+
+cons_ptr=0
+symbol_ptr=0
+function_ptr=0
+
+protected_ptr=0
+gensym_counter=0
+
+declare -A interned_strings
+declare -A car
+declare -A cdr
+declare -A environments
+declare -A recur_frames
+declare -A recur_fns
+declare -A analyzed
+declare -A marks
+declare -A global_bindings
+declare -A arities
+
+declare -a symbols
+declare -a protected
+
+heap_increment=1500
+cons_limit=$heap_increment
+symbol_limit=$heap_increment
+
+tag_marker="$(printf '\036')"
+
+declare -A type_tags=([000]=integer
+                      [001]=symbol
+                      [002]=cons
+                      [003]=user)
+
+declare -A user_type_tags
+declare -A user_type_names
+declare -A user_type_fields
+
+user_typeP() {
+  [[ "${type_tags[${1:1:3}]}" == "user" ]]
+}
+
+type() {
+  if [[ "${1:0:1}" == "$tag_marker" ]]; then
+    if user_typeP "$1"; then
+      r="${user_type_tags[${1:4:3}]}"
+    else
+      r="${type_tags[${1:1:3}]}"
+    fi
+  else
+    r=string
+  fi
+}
+
+user_type_counter=0
+make_user_type() {
+  local typename="$1"
+  user_type_tags["$(printf '%03d\n' $user_type_counter)"]="$typename"
+  user_type_names["$typename"]="$(printf '%03d\n' $((user_type_counter++)))"
+}
+
+strip_tag() { r="${1:4}"; }
+
+typeP() {
+  local obj="$1" tag="$2"
+  type "$obj" && [[ $r == $tag ]]
+}
+
+make_integer() { r="${tag_marker}000${1}"; }
+
+intern_symbol() {
+  if [[ -n "${interned_strings[$1]}" ]]; then
+    r="${interned_strings[$1]}"
+  else
+    symbol_ptr="$((symbol_ptr + 1))"
+    interned_strings["$1"]="${tag_marker}001${symbol_ptr}"
+    symbols["$symbol_ptr"]="$1"
+    r="${tag_marker}001${symbol_ptr}"
+  fi
+}
+
+defprim() {
+  local name="core/$1" sym_ptr prim_ptr
+  intern_symbol "$name" && sym_ptr="$r"
+  intern_symbol "$(printf '#<primitive:%s>' "$name")" && prim_ptr="$r"
+  global_bindings["$sym_ptr"]=$prim_ptr
+  r="$prim_ptr"
+}
+
+cons() {
+  local the_car="$1" the_cdr="$2"
+  while [[ -n "${marks[${tag_marker}002${cons_ptr}]}" ]]; do
+    unset marks["${tag_marker}002$((cons_ptr++))"]
+  done
+  if [[ $cons_ptr == $cons_limit ]]; then
+    mark "$the_car"
+    mark "$the_cdr"
+    gc
+  fi
+  unset environments["${tag_marker}002${cons_ptr}"]
+  unset recur_frames["${tag_marker}002${cons_ptr}"]
+  unset recur_fns["${tag_marker}002${cons_ptr}"]
+  unset analyzed["${tag_marker}002${cons_ptr}"]
+  car["${tag_marker}002${cons_ptr}"]="$the_car"
+  cdr["${tag_marker}002${cons_ptr}"]="$the_cdr"
+  r="${tag_marker}002${cons_ptr}"
+  cons_ptr="$((cons_ptr + 1))"
+}
+
+gensym() {
+  gensym_counter=$((gensym_counter + 1))
+  intern_symbol "G__${gensym_counter}"
+}
+
+protect() {
+  protected_ptr="$((protected_ptr + 1))"
+  protected["$protected_ptr"]="$1"
+}
+
+unprotect() { protected_ptr="$((protected_ptr - 1))"; }
+
+mark() {
+  if user_typeP "$1"; then
+    mark "${1:7}"
+  else    
+    type "$1"
+    case "$r" in
+      cons)
+        while [[ "$object" != $NIL && -z "${marks[$object]}" ]]; do
+          marks["$object"]=1
+          mark "${car[$object]}"
+          object="${cdr[$object]}"
+        done
+        ;;
+    esac
+  fi
+}
+
+gc() {
+  echo "GC..." >&2
+  IFS="$DEFAULT_IFS"
+  for k in ${!protected[@]};       do mark ${protected[$k]};       done
+  for k in ${!stack[@]};           do mark ${stack[$k]};           done
+  for k in ${!global_bindings[@]}; do mark ${global_bindings[$k]}; done
+  cons_ptr=0
+  while [[ -n "${marks[${tag_marker}002${cons_ptr}]}" ]]; do
+    unset marks["${tag_marker}002$((cons_ptr++))"]
+  done
+  if [[ $cons_ptr == $cons_limit ]]; then
+    echo "expanding heap..." >&2
+    cons_limit=$((cons_limit + heap_increment))
+  fi
+}
+
+# reader #######################################################################
+
+interpret_token() {
+  [[ "$1" =~ ^-?[[:digit:]]+$ ]] \
+    && r=integer && return
+  [[ "$1" =~ ^([[:graph:]]|$pb_star)+$ ]] \
+    && r=symbol && return
+  return 1
+}
+
+read_token() {
+  local token=""
+  while getc; do
+    if [[ "$r" =~ ('('|')'|[[:space:]]|$pb_newline|,) ]]; then
+      ungetc && break
+    else
+      token="${token}${r}"
+    fi
+  done
+  [ -z "$token" ] && return 1
+  if interpret_token "$token"; then
+    case "$r" in
+      symbol)  intern_symbol "$token" && return ;;
+      integer) make_integer "$token" && return ;;
+      *) error "unknown token type: '$r'"
+    esac
+  else
+    error "unknown token: '${token}'"
+  fi
+}
+
+skip_blanks() {
+  getc
+  while [[ "$r" =~ ([[:space:]]|$pb_newline|,) ]]; do getc; done
+  ungetc
+}
+
+skip_comment() {
+  getc
+  while [[ "$r" != "$pb_newline" ]]; do getc; done
+}
+
+read_list() {
+  local end="$1" ch read1 read2
+  if lisp_read; then
+    read1="$r"
+  else
+    getc
+    r="$NIL"
+    return
+  fi
+  getc && ch="$r"
+  case "$ch" in
+    ".")
+      lisp_read && read2="$r"
+      skip_blanks
+      getc
+      cons "$read1" "$read2"
+      ;;
+    "$end") cons "$read1" $NIL ;;
+    *)
+      ungetc
+      skip_blanks
+      read_list ")" && read2="$r"
+      cons "$read1" "$read2"
+  esac
+}
+
+read_string() {
+  local s=""
+  getc
+  while [[ "$r" != "\"" ]]; do
+    s="${s}${r}"
+    getc
+  done
+  r="$s"
+}
+
+lisp_read() {
+  local ch read1 read2 read3 read4
+  skip_blanks; getc; ch="$r"
+  case "$ch" in
+    "\"")
+      read_string
+      ;;
+    "(")
+      read_list ")"
+      ;;
+    "'")
+      lisp_read && read1="$r"
+      cons "$read1" $NIL && read2="$r"
+      cons $QUOTE "$read2"
+      ;;
+    ";")
+      skip_comment
+      lisp_read
+      ;;
+    *)
+      ungetc
+      read_token
+  esac
+}
+
+# printer ######################################################################
+
+pr_list() {
+  local lst="$1"
+  if [[ "${car[$lst]}" == $FN ]]; then
+    strip_tag "$lst" && printf '#<function:%s>' "$r" && r=$NIL
+  else
+    printf '('
+    pr "${car[$lst]}"
+    lst="${cdr[$lst]}"
+    while typeP "$lst" cons; do
+      printf ' '
+      pr "${car[$lst]}"
+      lst="${cdr[$lst]}"
+    done
+    if [[ "$lst" != $NIL ]]; then
+      printf ' . '
+      pr "$lst"
+    fi
+    printf ')'
+  fi
+}
+
+pr_user() {
+  local typename="${user_type_tags[${1:4:3}]}"
+  local fields="${1:7}"
+  printf '#<%s:' "$typename"
+  pr "$fields"
+  printf '>'
+}
+
+pr() {
+  type "$1"
+  case "$r" in
+    integer) strip_tag "$1" && printf '%d' "$r"                                         ;;
+    cons)    pr_list "$1"                                                               ;;
+    symbol)  strip_tag "$1" && printf '%s' "$(echo "${symbols[$r]}" | tr $pb_star "*")" ;;
+    string)  printf '"%s"' "$1"                                                         ;;
+    *) pr_user "$1"                                                                     ;;
+  esac
+}
+
+prn() {
+  pr "$1" && echo
+}
+
+# environment & control ########################################################
+
+frame_ptr=0
+stack_ptr=0
+
+declare -a stack
+
+intern_symbol '&'   && AMP="$r"
+intern_symbol 'nil' && NIL="$r"
+intern_symbol 't'   && T="$r"
+global_bindings[$NIL]="$NIL"
+global_bindings[$T]="$T"
+car[$NIL]="$NIL"
+cdr[$NIL]="$NIL"
+
+current_env="$NIL"
+
+intern_symbol 'quote'   && QUOTE=$r
+intern_symbol 'fn'      && FN=$r
+intern_symbol 'if'      && IF=$r
+intern_symbol 'set!'    && SETQ=$r
+intern_symbol 'def'     && DEF=$r
+intern_symbol 'do'      && DO=$r
+intern_symbol 'recur'   && RECUR=$r
+intern_symbol 'binding' && BINDING=$r
+intern_symbol 'deftype' && DEFTYPE=$r
+intern_symbol 'new'     && NEW=$r
+
+declare -A specials
+
+specials[$QUOTE]=1
+specials[$FN]=1
+specials[$IF]=1
+specials[$SETQ]=1
+specials[$DEF]=1
+specials[$DO]=1
+specials[$RECUR]=1
+specials[$BINDING]=1
+specials[$DEFTYPE]=1
+specials[$NEW]=1
+
+defprim 'eq?'      && EQ=$r
+defprim 'nil?'     && NILP=$r
+defprim 'car'      && CAR=$r
+defprim 'cdr'      && CDR=$r
+defprim 'cons'     && CONS=$r
+defprim 'list'     && LIST=$r
+defprim 'eval'     && EVAL=$r
+defprim 'apply'    && APPLY=$r
+defprim 'read'     && READ=$r
+defprim 'write'    && WRITE=$r
+defprim 'newline'  && NEWLINE=$r
+defprim '+'        && ADD=$r
+defprim '-'        && SUB=$r
+defprim "$pb_star" && MUL=$r
+defprim '/'        && DIV=$r
+defprim 'mod'      && MOD=$r
+defprim '<'        && LT=$r
+defprim '>'        && GT=$r
+defprim 'atom?'    && ATOMP=$r
+defprim 'cons?'    && CONSP=$r
+defprim 'symbol?'  && SYMBOLP=$r
+defprim 'number?'  && NUMBERP=$r
+defprim 'string?'  && STRINGP=$r
+defprim 'gensym'   && GENSYM=$r
+defprim 'random'   && RAND=$r
+defprim 'exit'     && EXIT=$r
+defprim 'gc'       && GC=$r
+defprim 'error'    && ERROR=$r
+defprim 'type'     && TYPE=$r
+
+eval_args() {
+  local args="$1"
+  while [[ "$args" != $NIL ]]; do
+    lisp_eval "${car[$args]}"
+    stack[$((stack_ptr++))]="$r"
+    args="${cdr[$args]}"
+  done
+}
+
+listify_args() {
+  local p=$((stack_ptr - 1)) ret=$NIL stop
+  [[ -z "$1" ]] && stop=$frame_ptr || stop="$1"
+  while ((stop <= p)); do
+    cons "${stack[$p]}" "$ret" && ret="$r"
+    p=$((p - 1))
+  done
+  r="$ret"
+}
+
+acons() {
+  local key="$1" datum="$2" a_list="$3"
+  cons "$key" "$datum" && cons "$r" "$a_list"
+}
+
+aget() {
+  local key="$1" a_list="$2"
+  while [[ "$a_list" != $NIL ]]; do
+    if [[ "${car[${car[$a_list]}]}" == "$key" ]]; then
+      r="${cdr[${car[$a_list]}]}" && return 0
+    fi
+    a_list="${cdr[$a_list]}"
+  done
+  r=$NIL && return 1
+}
+
+analyze() {
+  local fn="$1" body="$2" env="$3"
+  while [[ "$body" != "$NIL" ]]; do
+    type "${car[$body]}"
+    if [[ "$r" == cons ]]; then
+      case "${car[${car[$body]}]}" in
+        $FN) environments["${car[$body]}"]="$env" ;;
+        $RECUR)
+          recur_fns["${car[$body]}"]="$fn"
+          recur_frames["${car[$body]}"]="$frame_ptr"
+          ;;
+        *) analyze "$fn" "${car[$body]}" "$env" ;;
+      esac
+    fi
+    body="${cdr[$body]}"
+  done
+}
+
+apply_user() {
+  local fn="$1"
+  local body="${cdr[${cdr[$fn]}]}"
+  local params="${car[${cdr[$fn]}]}"
+  local p="$frame_ptr"
+  local ret="$NIL"
+  local old_env
+
+  [[ -z "${environments[$1]}" ]] && local env=$NIL || local env="${environments[$fn]}"
+
+  while [[ "$params" != $NIL && "${car[$params]}" != $AMP ]]; do
+    acons "${car[$params]}" "${stack[$((p++))]}" "$env" && env="$r"
+    params="${cdr[$params]}"
+  done
+
+  if [[ "${car[$params]}" == $AMP ]]; then
+    listify_args "$p" && local more="$r"
+    acons "${car[${cdr[$params]}]}" "$more" "$env" && env="$r"
+  fi
+
+  if [[ -z "${analyzed[$fn]}" ]]; then
+    analyze "$fn" "$body" "$env"
+    analyzed["$fn"]=1
+  fi
+
+  old_env="$current_env"
+  current_env="$env"
+  do_ "$body" && ret="$r"
+  current_env="$old_env"
+  r="$ret"
+}
+
+eval_file() {
+  local f="$1"
+  local str="$1"
+  local tmp="$(mktemp -t)"
+  echo "(do " > "$tmp"
+  cat "$f" >> "$tmp"
+  echo ")" >> "$tmp"
+  lisp_read < "$tmp"
+  lisp_eval "$r"
+}
+
+apply_primitive() {
+  local primitive="$1"
+  local arg0="${stack[$frame_ptr]}"
+  local arg1="${stack[$((frame_ptr+1))]}"
+  local arg2="${stack[$((frame_ptr+2))]}"
+
+  r=$NIL
+  case $primitive in
+    $EQ)         [[ "$arg0" == "$arg1" ]] && r="$T" ;;
+    $NILP)       [[ "$arg0" == $NIL ]] && r="$T"    ;;
+    $CAR)        r="${car[$arg0]}"                  ;;
+    $CDR)        r="${cdr[$arg0]}"                  ;;
+    $CONS)       cons "$arg0" "$arg1"               ;;
+    $LIST)       listify_args                       ;;
+    $EVAL)       lisp_eval "$arg0"                  ;;
+    $READ)       lisp_read                          ;;
+    $WRITE)      pr "$arg0" && printf ' ' && r="$NIL" ;;
+    $NEWLINE)    echo                               ;;
+    $MOD)        r="$((arg0 % arg1))"               ;;
+    $LT)
+      strip_tag "$arg0" && local x="$r"
+      strip_tag "$arg1" && local y="$r"
+      ((x < y)) && r=$T || r=$NIL
+      ;;
+    $GT)
+      strip_tag "$arg0" && local x="$r"
+      strip_tag "$arg1" && local y="$r"
+      ((x > y)) && r=$T || r=$NIL
+      ;;
+    $CONSP)      typeP "$arg0" cons &&   r=$T                        ;;
+    $ATOMP)      typeP "$arg0" integer || typeP $arg0 symbol && r=$T ;;
+    $SYMBOLP)    typeP "$arg0" symbol && r=$T || r=$NIL              ;;
+    $NUMBERP)    typeP "$arg0" integer && r=$T || r=$NIL             ;;
+    $STRINGP)    typeP "$arg0" string && r=$T || r=$NIL              ;;
+    $GC)         gc                                                  ;;
+    $GENSYM)     gensym                                              ;;
+    $ADD)
+      strip_tag "$arg0" && local x="$r"
+      strip_tag "$arg1" && local y="$r"
+      r=$((x + y)) && make_integer "$r"
+      ;;
+    $SUB)
+      strip_tag "$arg0" && local x="$r"
+      strip_tag "$arg1" && local y="$r"
+      r=$((x - y)) && make_integer "$r"
+      ;;
+    $APPLY)
+      local old_frame_ptr=$frame_ptr
+      frame_ptr=$stack_ptr
+      while typeP "$arg1" cons; do
+        stack[$stack_ptr]=${car[$arg1]}
+        stack_ptr=$((stack_ptr+1))
+        arg1=${cdr[$arg1]}
+      done
+      [[ $arg1 != $NIL ]] && error "Bad argument to apply: not a proper list"
+      apply $arg0
+      stack_ptr=$frame_ptr
+      frame_ptr=$old_frame_ptr
+      ;;
+    $BOUNDP)
+      [[ -n "${global_bindings[$arg0]}" ]] && r=$T
+      ;;
+    $ERROR)
+      printf 'lisp error: ' >&2
+      prn $arg0             >&2
+      ;;
+    $TYPE)
+      if [[ "$arg0" == $NIL ]]; then
+        r=$NIL
+      else
+        type "$arg0"
+        intern_symbol "$r"
+      fi
+      ;;
+    $MUL)
+      strip_tag "$arg0" && local x="$r"
+      strip_tag "$arg1" && local y="$r"
+      r=$((x * y)) && make_integer "$r"
+      ;;
+    $DIV)
+      local x y
+      strip_tag $arg0 && x=$r
+      strip_tag $arg1 && y=$r
+      make_integer $((x / y))
+      ;;
+    $RAND)
+      strip_tag $arg0
+      make_integer "$((RANDOM * r))"
+      ;;
+    $EXIT)
+      strip_tag $arg0
+      exit "$r"
+      ;;
+    *) error "unknown primitive function type: ${symbols[$1]}"
+  esac
+}
+
+apply() {
+  if [[ "${car[$1]}" == "$FN" ]]; then
+    apply_user "$1"
+  else
+    apply_primitive "$1"
+  fi
+}
+
+do_() {
+  local body="$1" result="$NIL"
+  while [[ "$body" != $NIL ]]; do
+    lisp_eval "${car[$body]}" && result="$r"
+    body="${cdr[$body]}"
+  done
+  r="$result"
+}
+
+eval_special() {
+  local special="$1"
+  local op="${car[$1]}"
+  local args="${cdr[$1]}"
+  local arg0="${car[$args]}"
+  local arg1="${car[${cdr[$args]}]}"
+  local arg2="${car[${cdr[${cdr[$args]}]}]}"
+  case $op in
+    $QUOTE)  r=$arg0        ;;
+    $DO)     do_ $args      ;;
+    $FN)     r=$special     ;;
+    $IF)
+      lisp_eval $arg0
+      [[ $r != $NIL ]] && lisp_eval $arg1 || lisp_eval $arg2
+      ;;
+    $SETQ)
+      if [[ -n "${global_bindings[$arg0]}" ]]; then
+        lisp_eval $arg1 && global_bindings[$arg0]="$r"
+      else
+        error "unbound variable: ${symbols[$arg0]}"
+      fi
+      ;;
+    $RECUR)
+      frame_ptr="${recur_frames[$1]}"
+      stack_ptr=$frame_ptr
+      while [[ "$args" != $NIL ]]; do
+        lisp_eval "${car[$args]}"
+        stack[$((stack_ptr++))]="$r"
+        args="${cdr[$args]}"
+      done
+      apply_user "${recur_fns[$1]}"
+      ;;
+    $BINDING)
+      local binding="$arg0"
+      local body="${cdr[${cdr[$1]}]}"
+      local name="${car[$binding]}"
+      local prev_binding
+      local ret
+      lisp_eval "${car[${cdr[$binding]}]}" && local val="$r"
+      if [[ -n "${global_bindings[$name]}" ]]; then
+        prev_binding="${global_bindings[$name]}"
+      fi
+      global_bindings["$name"]="$val"
+      do_ "$body" && ret="$r"
+      if [[ -n "$prev_binding" ]]; then
+        global_bindings["$name"]="$prev_binding"
+      else
+        unset global_bindings["$name"]
+      fi
+      r="$ret"
+      ;;
+    $DEFTYPE)
+      current_ns_name && local nsname="$r"
+      sym_name "$arg0" && local sym="$r"
+      local typename="${nsname}/${sym}"
+      local field_names="$arg1"
+      make_user_type "$typename"
+      user_type_fields["$typename"]="$field_names"
+      intern_symbol "$typename"
+      ;;
+    $NEW)
+      current_ns_name && local nsname="$r"
+      sym_name "$arg0" && local sym="$r"
+      local typename="${nsname}/${sym}"
+      local field_names="${user_type_fields[$typename]}"
+      local field_vals="${cdr[$args]}"
+      local fields=$NIL
+      while [[ "$field_names" != $NIL ]]; do
+        lisp_eval "${car[$field_vals]}" && local val="$r"
+        acons "${car[$field_names]}" "$val" "$fields" && fields="$r"
+        field_names="${cdr[$field_names]}"
+        field_vals="${cdr[$field_vals]}"
+      done
+      local usertag="${user_type_names[$typename]}"
+      r="${tag_marker}003${usertag}${fields}"
+      ;;
+    $DEF)
+      current_ns_name && local nsname="$r"
+      sym_name "$arg0" && local sym="$r"
+      intern_symbol "${nsname}/${sym}" && local qual="$r"
+      lisp_eval "$arg1" && global_bindings["$qual"]=$r
+      r="$qual"
+      ;;
+    *) error "eval_special: unknown form: ${symbols[$op]}"
+  esac
+}
+
+eval_function() {
+  local op="${car[$1]}" eval_op
+  local args="${cdr[$1]}"
+  local old_frame_ptr=$frame_ptr
+  frame_ptr=$stack_ptr
+  lisp_eval "$op" && eval_op="$r" && protect "$eval_op"
+  eval_args "$args"
+  apply "$eval_op"
+  unprotect
+  stack_ptr=$frame_ptr
+  frame_ptr=$old_frame_ptr
+}
+
+lisp_eval() {
+  type $1
+  case $r in
+    symbol)
+      [[ "$1" == "$NIL" ]] && r="$NIL" && return
+      [[ "$1" == "$T" ]] && r="$T" && return
+      [[ "$1" == "$NS" ]] && r="${global_bindings[$NS]}" && return
+
+      if [[ "$1" == */* ]]; then
+        # check aliases
+        # check requires
+        echo
+      else
+        aget "$1" "$current_env" && return
+        if aget "$1" "${ns_refers[${global_bindings[$NS]}]}"; then
+          r="${global_bindings[$r]}"
+          return
+        fi
+        strip_tag "$1" && symp="$r"
+        current_ns_name && local thisns="${r}/${symbols[$symp]}"
+        intern_symbol "$thisns" && local qual="$r"
+        if [[ -n "${global_bindings[$qual]}" ]]; then
+          r="${global_bindings[$qual]}"
+          return
+        fi
+        error "unable to resolve ${symbols[$symp]}"
+      fi
+      ;;
+    cons)
+      if [[ -n "${specials[${car[$1]}]}" ]]; then
+        eval_special "$1"
+      else
+        eval_function "$1"
+      fi
+      ;;
+    integer) r=$1   ;;
+    string)  r="$1" ;;
+    *)
+      error "lisp_eval: unrecognized type"
+      ;;
+  esac
+}
+
+# namespaces ###################################################################
+
+aput() {
+  local key="$1" datum="$2" a_list="$3"
+  local original="$a_list"
+  while [[ "$a_list" != $NIL ]]; do
+    if [[ "${car[${car[$a_list]}]}" == "$key" ]]; then
+      cdr["${car[$a_list]}"]="$datum"
+      r="$original" && return 0
+    fi
+    a_list="${cdr[$a_list]}"
+  done
+  cons "$key" "$datum" && cons "$r" "$original" && original="$r"
+  r="$original"
+}
+
+intern_symbol "${pb_star}ns${pb_star}" && NS="$r"
+intern_symbol 'core' && CORE_NS="$r"
+intern_symbol 'user' && USER_NS="$r"
+
+declare -A ns_aliases
+declare -A ns_refers
+
+ns_refer() {
+  local ns="$1"
+  local remote_ns="$2"
+  local refer="$3"
+  strip_tag "$remote_ns" && local ns_name="${symbols[$r]}"
+  strip_tag "$refer" && local refer_name="${symbols[$r]}"
+  [[ -n "${ns_refers[$ns]}" ]] && local refers="${ns_refers[$ns]}" || local refers="$NIL"
+  intern_symbol "${ns_name}/${refer_name}" && local qual="$r"
+  aput "$refer" "$qual" "$refers" && refers="$r"
+  ns_refers["$ns"]="$refers"
+}
+
+ns_alias() {
+  local ns="$1"
+  local remote_ns="$2"
+  local alias="$2"
+  [[ -n "${ns_aliases[$ns]}" ]] && local aliases="${ns_aliases[$ns]}" || local aliases="$NIL"
+  aput "$alias" "$remote_ns" "$aliases" && aliases="$r"
+  ns_aliases["$ns"]="$aliases"
+}
+
+sym_ns() {
+  strip_tag "$1" && local str="${symbols[$r]}"
+  r="$(echo $str | cut -d'/' -f1)"
+}
+
+sym_name() {
+  strip_tag "$1" && local str="${symbols[$r]}"
+  r="$(echo $str | cut -d'/' -f2)"
+}
+
+current_ns_name() {
+  strip_tag "${global_bindings[$NS]}" && r="${symbols[$r]}"
+}
+
+refer_core() {
+  current_ns_name && local current_ns="$r"
+  for k in ${!global_bindings[@]}; do
+    strip_tag "$k" && local str="${symbols[$r]}"
+    if [[ "${str:0:4}" == "core" ]]; then
+      intern_symbol "${str:5}" && local refer="$r"
+      ns_refer "${global_bindings[$NS]}" "$CORE_NS" "$refer"
+    fi
+  done
+}
+
+global_bindings["$NS"]="$USER_NS"
+refer_core
+
+# repl #########################################################################
+
+repl() {
+  while true; do
+    current_ns_name
+    printf "$r> "
+    lisp_read
+    [[ -n "$e" ]] && printf "read error: $e\n" >&2
+    protect "$r"
+    lisp_eval "$r"
+    [[ -n "$e" ]]  && printf "eval error: $e\n" >&2
+    prn "$r"
+    [[ -n "$e" ]] && printf "print error: $e\n" >&2
+    unprotect
+  done
+}
+
+# start ########################################################################
+
+eval_string() {
+  local str="$1"
+  local tmp="$(mktemp -t)"
+  echo "(do " > "$tmp"
+  echo "$str" >> "$tmp"
+  echo ")" >> "$tmp"
+  lisp_read < "$tmp"
+  lisp_eval "$r"
+}
+
+while getopts ":e:l:r" opt; do
+  case $opt in
+    e) eval_string "$OPTARG"
+      [[ $r != $NIL ]] && prn $r
+      ;;
+    l) eval_file "$OPTARG"
+      [[ $r != $NIL ]] && prn $r
+      ;;
+    r) repl                  ;;
+  esac
+done
