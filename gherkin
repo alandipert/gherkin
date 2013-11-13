@@ -366,6 +366,13 @@ prn() {
   pr "$1" && echo
 }
 
+pr_str() {
+  local tmp="$(mktemp -t)"
+  pr "$1" > $tmp
+  r="$(cat $tmp)"
+  rm "$tmp"
+}
+
 # environment & control ########################################################
 
 frame_ptr=0
