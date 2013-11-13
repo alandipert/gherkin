@@ -67,7 +67,6 @@ ungetc() {
 
 cons_ptr=0
 symbol_ptr=0
-function_ptr=0
 
 protected_ptr=0
 gensym_counter=0
