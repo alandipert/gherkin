@@ -30,11 +30,14 @@ pb_unget="^$"
 readline() {
   IFS=$'\n\b'
   current_ns_name && local prompt="$r> "
-  for ch in $(read -e -p "$prompt" line && echo "^${line}" | grep -o . | tail -n +2 | tr "*" "$pb_star"); do
+  local line
+  read -e -p "$prompt" line
+  for ch in $(echo "^${line}" | grep -o . | tail -n +2 | tr "*" "$pb_star"); do
     pb_get="${pb_get:0:$((${#pb_get}-1))}${ch}$"
   done
   pb_get="${pb_get:0:$((${#pb_get}-1))}${pb_newline}$"
   IFS="$DEFAULT_IFS"
+  history -s "$line"
 }
 
 getc() {
