@@ -40,7 +40,7 @@ readline() {
   IFS=$'\n\b'
   current_ns_name && local prompt="$r> "
   local line
-  read -e -p "$prompt" line
+  read -e -p "$prompt" line || exit 0
   for ch in $(echo "^${line}" | grep -o . | tail -n +2 | tr "*" "$pb_star"); do
     pb_get="${pb_get:0:$((${#pb_get}-1))}${ch}$"
   done
@@ -885,6 +885,7 @@ refer_core
 
 repl() {
   while true; do
+    e=   # clear existing error state
     lisp_read
     [[ -n "$e" ]] && printf "read error: $e\n" >&2
     protect "$r"
