@@ -2,6 +2,15 @@
 
 # -*- mode: sh -*-
 
+usage() {
+ echo "$0 [OPTION]"
+ echo
+ echo "  -e|--eval STR    Evaluate STR"
+ echo "  -l|--load FILE   Load and evaluate FILE"
+ echo "  -r|--repl        Start a REPL"
+ exit 2
+}
+
 if [[ "${BASH_VERSINFO[0]}" != 4 ]]; then
   echo "bash >= 4.0.0 required" >2&
   exit 1
@@ -899,14 +908,22 @@ eval_string() {
   lisp_eval "$r"
 }
 
-while getopts ":e:l:r" opt; do
-  case $opt in
-    e) eval_string "$OPTARG"
-      [[ $r != $NIL ]] && prn $r
-      ;;
-    l) eval_file "$OPTARG"
-      [[ $r != $NIL ]] && prn $r
-      ;;
-    r) repl                  ;;
+# Start REPL if no arguments
+[ -z "$*" ] && repl
+
+# Process parameters
+while [ "$*" ]; do
+  param=$1; shift; OPTARG=$1
+  case $param in
+    -e|--eval) eval_string "$OPTARG"; shift;
+               [[ $r != $NIL ]] && prn $r
+               ;;
+    -l|--load) eval_file "$OPTARG"; shift;
+               [[ $r != $NIL ]] && prn $r
+               ;;
+    -t|--test) ;;
+    -r|--repl) repl ;;
+    *) usage ;;
   esac
 done
+
