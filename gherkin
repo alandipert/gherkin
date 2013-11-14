@@ -827,6 +827,7 @@ aput() {
 
 intern_symbol "${pb_star}ns${pb_star}" && NS="$r"
 intern_symbol 'core' && CORE_NS="$r"
+intern_symbol 'repl' && REPL_NS="$r"
 intern_symbol 'user' && USER_NS="$r"
 
 declare -A ns_aliases
@@ -883,13 +884,31 @@ refer_core
 
 # repl #########################################################################
 
+setup_repl() {
+  intern_symbol 'repl/*1' && HIST1="$r"
+  intern_symbol 'repl/*2' && HIST2="$r"
+  intern_symbol 'repl/*3' && HIST3="$r"
+
+  global_bindings["$HIST1"]="$NIL"
+  global_bindings["$HIST2"]="$NIL"
+  global_bindings["$HIST3"]="$NIL"
+}
+
+update_repl_history() {
+  global_bindings[$HIST3]="${global_bindings[$HIST2]}"
+  global_bindings[$HIST2]="${global_bindings[$HIST1]}"
+  global_bindings[$HIST1]="$r"
+}
+
 repl() {
+  setup_repl
   while true; do
     e=   # clear existing error state
     lisp_read
     [[ -n "$e" ]] && printf "read error: $e\n" >&2
     protect "$r"
     lisp_eval "$r"
+    update_repl_history
     [[ -n "$e" ]]  && printf "eval error: $e\n" >&2
     prn "$r"
     [[ -n "$e" ]] && printf "print error: $e\n" >&2
