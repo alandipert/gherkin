@@ -30,6 +30,8 @@
      "- first-class macros (fexpr)"
      "- lazy seqs"
      "- channels+CSP primitives, terse shell mode a la eshell"
+     "- save-world/load-world"
+     "  - dump interp. state/env to executable .sh"
      )
     ("things it might have"
      "\\n"
