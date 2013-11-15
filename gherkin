@@ -12,7 +12,7 @@ usage() {
 }
 
 if [[ "${BASH_VERSINFO[0]}" != 4 ]]; then
-  echo "bash >= 4.0.0 required" >2&
+  echo "bash >= 4.0.0 required" >&2
   exit 1
 fi
 
