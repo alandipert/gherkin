@@ -379,10 +379,7 @@ prn() {
 }
 
 pr_str() {
-  local tmp="$(mktemp -t)"
-  pr "$1" > $tmp
-  r="$(cat $tmp)"
-  rm "$tmp"
+  r=$(pr "$1")
 }
 
 # environment & control ########################################################
@@ -547,12 +544,8 @@ apply_user() {
 
 eval_file() {
   local f="$1"
-  local str="$1"
-  local tmp="$(mktemp -t)"
-  echo "(do " > "$tmp"
-  cat "$f" >> "$tmp"
-  echo ")" >> "$tmp"
-  lisp_read < "$tmp"
+  local input=$(cat "$f")
+  lisp_read <<<"(do $input)"
   lisp_eval "$r"
 }
 
@@ -952,11 +945,7 @@ repl() {
 
 eval_string() {
   local str="$1"
-  local tmp="$(mktemp -t)"
-  echo "(do " > "$tmp"
-  echo "$str" >> "$tmp"
-  echo ")" >> "$tmp"
-  lisp_read < "$tmp"
+  lisp_read <<<"(do $str)"
   lisp_eval "$r"
 }
 
