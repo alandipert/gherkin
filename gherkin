@@ -412,6 +412,7 @@ intern_symbol 'recur'   && RECUR=$r
 intern_symbol 'binding' && BINDING=$r
 intern_symbol 'deftype' && DEFTYPE=$r
 intern_symbol 'new'     && NEW=$r
+intern_symbol 'bash'    && BASH=$r
 
 declare -A specials
 
@@ -425,6 +426,7 @@ specials[$RECUR]=1
 specials[$BINDING]=1
 specials[$DEFTYPE]=1
 specials[$NEW]=1
+specials[$BASH]=1
 
 defprim 'eq?'      && EQ=$r
 defprim 'nil?'     && NILP=$r
@@ -452,9 +454,11 @@ defprim 'string?'  && STRINGP=$r
 defprim 'gensym'   && GENSYM=$r
 defprim 'random'   && RAND=$r
 defprim 'exit'     && EXIT=$r
+defprim 'println'  && PRINTLN=$r
 defprim 'gc'       && GC=$r
 defprim 'error'    && ERROR=$r
 defprim 'type'     && TYPE=$r
+defprim 'str'      && STR=$r
 
 eval_args() {
   local args="$1"
@@ -566,6 +570,15 @@ apply_primitive() {
     $CDR)        r="${cdr[$arg0]}"                  ;;
     $CONS)       cons "$arg0" "$arg1"               ;;
     $LIST)       listify_args                       ;;
+    $STR)
+      listify_args && strs="$r"
+      local ret=""
+      while [[ "$strs" != "$NIL" ]]; do
+        ret="${ret}${car[$strs]}"
+        strs="${cdr[$strs]}"
+      done
+      r="$ret"
+      ;;
     $EVAL)       lisp_eval "$arg0"                  ;;
     $READ)       lisp_read                          ;;
     $WRITE)      pr "$arg0" && printf ' ' && r="$NIL" ;;
@@ -641,6 +654,21 @@ apply_primitive() {
       strip_tag $arg0
       make_integer "$((RANDOM * r))"
       ;;
+    $PRINTLN)
+      listify_args && local to_print="$r"
+      while [[ "$to_print" != "$NIL" ]]; do
+        type "${car[$to_print]}"
+        case "$r" in
+          string)
+            echo -e "${car[$to_print]}"
+            ;;
+          *) prn "${car[$to_print]}"
+            ;;
+        esac
+        to_print="${cdr[$to_print]}"
+      done
+      r="$NIL"
+      ;;
     $EXIT)
       strip_tag $arg0
       exit "$r"
@@ -674,6 +702,10 @@ eval_special() {
   local arg1="${car[${cdr[$args]}]}"
   local arg2="${car[${cdr[${cdr[$args]}]}]}"
   case $op in
+    $BASH)
+      eval "${arg0}"
+      r="$NIL"
+      ;;
     $QUOTE)  r=$arg0        ;;
     $DO)     do_ $args      ;;
     $FN)     r=$special     ;;

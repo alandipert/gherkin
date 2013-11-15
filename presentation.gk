@@ -1,0 +1,69 @@
+#!./gherkin -l
+
+(def map
+  (fn (f xs)
+    (if xs
+      (cons (f (car xs)) (map f (cdr xs))))))
+
+(def conj-slides
+  '(("gherkin - a lisp written in bash4"
+     "\\n"
+     "https://github.com/alandipert/gherkin"
+     "@alandipert")
+    ("things it has"
+     "\\n"
+     "- string, integer, symbol scalars"
+     "- symbols tagged, easily extensible"
+     "  - bignum/floats via promoting ops, contagion"
+     "    - shell out to bc(1)"
+     "- mark/sweep GC"
+     "- dynamic binding: def/setq/binding"
+     "- lexical binding: fn*"
+     "  - varargs: (fn (x y & more) ...)"
+     "- non-stack-consuming recursion"
+     "  - via recur in fn tail position"
+     "- namespaces (almost)")
+    ("things it will have"
+     "\\n"
+     "- deftype, extend"
+     "  - protocols for IFn, ISeq, Channel, etc."
+     "- first-class macros (fexpr)"
+     "- lazy seqs"
+     "- channels+CSP primitives, terse shell mode a la eshell"
+     )
+    ("things it might have"
+     "\\n"
+     "- clojure interpreter"
+     "- concurrent GC"
+     "- compiler"
+     "  - #lang gherkin in Racket"
+     "- static type checking via core.typed"
+     "- embedded prolog via Make")
+    ("things it will never have"
+     "\\n"
+     "- assoc. data other than alist/plist"
+     "  - no real array in bash"
+     "- numeric performance... any performance"
+     "- suckiness")
+    ("thanks!"
+     "\\n"
+     "Spencer Tipping: for a contagious imagination"
+     "Aaron Brooks: early feedback on original reader"
+     "Aron Griffis: bash pro tips"
+     "Joel Martin: REPL readline support, bind(2) patch to Bash")))
+
+(def present
+  (fn (slides)
+    (if slides
+      (do
+        (bash "clear")
+        (apply println (map (fn (line)
+                              (str "\\t" line))
+                            (car slides)))
+        (newline)
+        (read)
+        (recur (cdr slides))))))
+
+(present conj-slides)
+(println "Switching to REPL.")
+(bash "repl")
