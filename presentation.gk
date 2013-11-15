@@ -5,67 +5,92 @@
     (if xs
       (cons (f (car xs)) (map f (cdr xs))))))
 
+(def bold
+  (fn (s)
+    (str "\\033[1m" s "\\033[0m")))
+
+(def blue
+  (fn (s)
+    (str "\\033\[1;34m" s "\\033[0m")))
+
+(def title
+  (fn (s)
+    (bold (blue (str s "\\n\\n")))))
+
 (def conj-slides
-  '(("gherkin - a lisp written in bash4"
-     "\\n"
-     "https://github.com/alandipert/gherkin"
-     "@alandipert")
-    ("things it has"
-     "\\n"
-     "- string, integer, symbol scalars"
-     "- symbols tagged, easily extensible"
-     "  - bignum/floats via promoting ops, contagion"
-     "    - shell out to bc(1)"
-     "- mark/sweep GC"
-     "- dynamic binding: def/setq/binding"
-     "- lexical binding: fn*"
-     "  - varargs: (fn (x y & more) ...)"
-     "- non-stack-consuming recursion"
-     "  - via recur in fn tail position"
-     "- namespaces (almost)")
-    ("things it will have"
-     "\\n"
-     "- deftype, extend"
-     "  - protocols for IFn, ISeq, Channel, etc."
-     "- first-class macros (fexpr)"
-     "- lazy seqs"
-     "- channels+CSP primitives, terse shell mode a la eshell"
-     "- save-world/load-world"
-     "  - dump interp. state/env to executable .sh"
-     )
-    ("things it might have"
-     "\\n"
-     "- clojure interpreter"
-     "- concurrent GC"
-     "- compiler"
-     "  - #lang gherkin in Racket"
-     "- static type checking via core.typed"
-     "- embedded prolog via Make")
-    ("things it will never have"
-     "\\n"
-     "- assoc. data other than alist/plist"
-     "  - no real array in bash"
-     "- numeric performance... any performance"
-     "- suckiness")
-    ("thanks!"
-     "\\n"
-     "Spencer Tipping: for a contagious imagination"
-     "Aaron Brooks: early feedback on original reader"
-     "Aron Griffis: bash pro tips"
-     "Joel Martin: REPL readline support, bind(2) patch to Bash")))
+  (list
+   (list
+    (title "unix: ok, shell: $!@$#")
+    "- both are everywhere"
+    "- shell: the universal hypervisor?"
+    "- unix/shell support powerful primitives"
+    "  - 'buffered channels' via fifo"
+    "  - 'channels' via streams"
+    "  - 'processes' via job control"
+    "  - ... hidden behind reams of esoterica, syntax"
+    "how do we replace bash?")
+   (list
+    (title "gherkin - a lisp1 written in bash4")
+    "https://github.com/alandipert/gherkin"
+    "@alandipert")
+   (list
+    (title "things it has")
+    "- string, integer, symbol scalars"
+    "- symbols tagged, easily extensible"
+    "  - bignum/floats via promoting ops, contagion"
+    "  - shell out to bc(1)"
+    "- mark/sweep GC"
+    "- dynamic binding: def/setq/binding"
+    "- lexical binding: fn*"
+    "  - varargs: (fn (x y & more) ...)"
+    "- non-stack-consuming recursion"
+    "  - via recur in fn tail position"
+    "- namespaces (almost)")
+   (list
+    (title "things it will have")
+    "- deftype, extend"
+    "  - protocols for IFn, ISeq, Channel, etc."
+    "- first-class macros (fexpr)"
+    "- lazy seqs"
+    "- channels/core.async primitives, terse REPL mode a la eshell"
+    "- save-world/load-world"
+    "  - dump interp. state/env to executable .sh"
+    "  - save-world and slipstream to AMIs via user-data?"
+    )
+   (list
+    (title "things it might have")
+    "- clojure interpreter"
+    "- concurrent GC"
+    "- compiler"
+    "  - #lang gherkin in Racket"
+    "- static type checking via core.typed"
+    "- embedded prolog via make(1)?!")
+   (list
+    (title "things it will never have")
+    "- assoc. data other than alist/plist"
+    "  - no real array in bash"
+    "- numeric performance"
+    "  - any performance"
+    "  - of any conceivable kind"
+    "- suckiness")
+   (list
+    (title "thanks to:")
+    "Darius Bacon et al: awklisp"
+    "Spencer Tipping: for a contagious imagination"
+    "Aaron Brooks: early feedback on original reader"
+    "Aron Griffis: bash pro tips"
+    "Joel Martin: REPL readline support, bind(2) patch to Bash")))
 
 (def present
   (fn (slides)
     (if slides
       (do
         (bash "clear")
-        (apply println (map (fn (line)
-                              (str "\\t" line))
-                            (car slides)))
+        (apply println (map (fn (line) (str "\\t" line)) (car slides)))
         (newline)
         (read)
         (recur (cdr slides))))))
 
 (present conj-slides)
-(println "Switching to REPL.")
+(println (blue "Switching to REPL!"))
 (bash "repl")
