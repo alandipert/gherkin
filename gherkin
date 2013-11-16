@@ -28,8 +28,9 @@
 # POSSIBILITY OF SUCH DAMAGE. 
 
 usage() {
- echo "$0 [OPTION]"
+ echo "$0 [OPTION] FILE..."
  echo
+ echo "Options:"
  echo "  -e|--eval STR    Evaluate STR"
  echo "  -l|--load FILE   Load and evaluate FILE"
  echo "  -r|--repl        Start a REPL"
@@ -981,15 +982,18 @@ eval_string() {
 while [ "$*" ]; do
   param=$1; shift; OPTARG=$1
   case $param in
-    -e|--eval) eval_string "$OPTARG"; shift;
+    -e|--eval) eval_string "$OPTARG"; shift
                [[ $r != $NIL ]] && prn $r
                ;;
-    -l|--load) eval_file "$OPTARG"; shift;
+    -l|--load) eval_file "$OPTARG"; shift
                [[ $r != $NIL ]] && prn $r
                ;;
     -t|--test) ;;
     -r|--repl) repl ;;
-    *) usage ;;
+    -*) usage ;;
+    *)         eval_file "$param"
+               [[ $r != $NIL ]] && prn $r
+               ;;
   esac
 done
 
