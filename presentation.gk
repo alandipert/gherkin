@@ -93,4 +93,5 @@
 
 (present conj-slides)
 (println (blue "Switching to REPL!"))
-(sh! "repl")
+
+((fn () (println (eval (read))) (recur)))
