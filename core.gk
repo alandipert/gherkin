@@ -12,6 +12,10 @@
       (recur f (f init (car xs)) (cdr xs))
       init)))
 
+(def count
+  (fn (lst)
+    (reduce (fn (x y) (inc x)) 0 lst)))
+
 (def identity (fn (x) x))
 
 (def every?
