@@ -357,6 +357,18 @@ lisp_read() {
   esac
 }
 
+string_list() {
+  local c="$1" ret
+  shift
+  if [[ "$1" == "" ]]; then
+    cons $c $NIL && ret="$r"
+  else
+    string_list $*
+    cons $c $r && ret="$r"
+  fi
+  r="$ret"
+}
+
 # printer ######################################################################
 
 pr_list() {
@@ -477,6 +489,8 @@ defprim 'gensym'   && GENSYM=$r
 defprim 'random'   && RAND=$r
 defprim 'exit'     && EXIT=$r
 defprim 'println'  && PRINTLN=$r
+defprim 'sh'       && SH=$r
+defprim 'use'      && USE=$r
 defprim 'gc'       && GC=$r
 defprim 'error'    && ERROR=$r
 defprim 'type'     && TYPE=$r
@@ -686,6 +700,27 @@ apply_primitive() {
         to_print="${cdr[$to_print]}"
       done
       r="$NIL"
+      ;;
+    $SH)
+      local ret
+      ret="$($arg0)"
+      IFS=$'\n'
+      string_list $(for i in $ret; do echo "$i"; done)
+      IFS="$DEFAULT_IFS"
+      ;;
+    $USE)
+      local f
+      if [[ -r ${arg0} ]]; then
+        f="${arg0}"
+      elif [[ -r "${arg0}.gk" ]]; then
+        f="${arg0}.gk"
+      fi
+      if [[ "$f" != "" ]]; then
+        eval_file "$f"
+      else
+        echo "File not found: ${arg0}"
+        r="$NIL"
+      fi
       ;;
     $EXIT)
       strip_tag $arg0
