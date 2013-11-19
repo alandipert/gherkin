@@ -85,7 +85,7 @@
   (fn (slides)
     (if slides
       (do
-        (bash "clear")
+        (sh! "clear")
         (apply println (map (fn (line) (str "\\t" line)) (car slides)))
         (newline)
         (read)
@@ -93,4 +93,4 @@
 
 (present conj-slides)
 (println (blue "Switching to REPL!"))
-(bash "repl")
+(sh! "repl")

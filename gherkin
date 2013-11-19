@@ -446,7 +446,6 @@ intern_symbol 'recur'   && RECUR=$r
 intern_symbol 'binding' && BINDING=$r
 intern_symbol 'deftype' && DEFTYPE=$r
 intern_symbol 'new'     && NEW=$r
-intern_symbol 'bash'    && BASH=$r
 
 declare -A specials
 
@@ -460,7 +459,6 @@ specials[$RECUR]=1
 specials[$BINDING]=1
 specials[$DEFTYPE]=1
 specials[$NEW]=1
-specials[$BASH]=1
 
 defprim 'eq?'      && EQ=$r
 defprim 'nil?'     && NILP=$r
@@ -490,6 +488,7 @@ defprim 'random'   && RAND=$r
 defprim 'exit'     && EXIT=$r
 defprim 'println'  && PRINTLN=$r
 defprim 'sh'       && SH=$r
+defprim 'sh!'      && SH_BANG=$r
 defprim 'use'      && USE=$r
 defprim 'gc'       && GC=$r
 defprim 'error'    && ERROR=$r
@@ -708,6 +707,10 @@ apply_primitive() {
       string_list $(for i in $ret; do echo "$i"; done)
       IFS="$DEFAULT_IFS"
       ;;
+    $SH_BANG)
+      eval "${arg0}"
+      r="$NIL"
+      ;;
     $USE)
       local f
       if [[ -r ${arg0} ]]; then
@@ -755,10 +758,6 @@ eval_special() {
   local arg1="${car[${cdr[$args]}]}"
   local arg2="${car[${cdr[${cdr[$args]}]}]}"
   case $op in
-    $BASH)
-      eval "${arg0}"
-      r="$NIL"
-      ;;
     $QUOTE)  r=$arg0        ;;
     $DO)     do_ $args      ;;
     $FN)     r=$special     ;;
