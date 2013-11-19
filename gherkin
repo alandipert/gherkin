@@ -490,6 +490,8 @@ defprim 'random'   && RAND=$r
 defprim 'exit'     && EXIT=$r
 defprim 'println'  && PRINTLN=$r
 defprim 'sh'       && SH=$r
+defprim 'load'     && LOAD=$r
+defprim 'use'      && USE=$r
 defprim 'gc'       && GC=$r
 defprim 'error'    && ERROR=$r
 defprim 'type'     && TYPE=$r
@@ -704,6 +706,12 @@ apply_primitive() {
       local ret i
       ret="$($arg0)"
       string_list $(for i in $ret; do echo -n " $i"; done)
+      ;;
+    $LOAD)
+      eval_file "$arg0"
+      ;;
+    $USE)
+      eval_file "${arg0}.gk"
       ;;
     $EXIT)
       strip_tag $arg0
