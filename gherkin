@@ -702,9 +702,12 @@ apply_primitive() {
       r="$NIL"
       ;;
     $SH)
-      local ret i
+      local ret ifs
       ret="$($arg0)"
-      string_list $(for i in $ret; do echo -n " $i"; done)
+      ifs="$IFS"
+      IFS=$'\n'
+      string_list $(for i in $ret; do echo "$i"; done)
+      IFS="$ifs"
       ;;
     $USE)
       local f
