@@ -222,10 +222,11 @@ protect() {
 unprotect() { protected_ptr="$((protected_ptr - 1))"; }
 
 mark() {
-  if user_typeP "$1"; then
-    mark "${1:7}"
+  local object="$1"
+  if user_typeP "$object"; then
+    mark "${object:7}"
   else    
-    type "$1"
+    type "$object"
     case "$r" in
       cons)
         while [[ "$object" != $NIL && -z "${marks[$object]}" ]]; do
