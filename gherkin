@@ -702,12 +702,11 @@ apply_primitive() {
       r="$NIL"
       ;;
     $SH)
-      local ret ifs
+      local ret
       ret="$($arg0)"
-      ifs="$IFS"
       IFS=$'\n'
       string_list $(for i in $ret; do echo "$i"; done)
-      IFS="$ifs"
+      IFS="$DEFAULT_IFS"
       ;;
     $USE)
       local f
