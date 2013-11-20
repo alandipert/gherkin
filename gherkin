@@ -730,7 +730,9 @@ apply_primitive() {
       strip_tag $arg0
       exit "$r"
       ;;
-    *) error "unknown primitive function type: ${symbols[$1]}"
+    *)
+      strip_tag $primitive
+      error "unknown primitive function type: ${symbols[$r]}"
   esac
 }
 
@@ -770,7 +772,8 @@ eval_special() {
       if [[ -n "${global_bindings[$arg0]}" ]]; then
         lisp_eval $arg1 && global_bindings[$arg0]="$r"
       else
-        error "unbound variable: ${symbols[$arg0]}"
+        strip_tag $arg0
+        error "unbound variable: ${symbols[$r]}"
       fi
       ;;
     $RECUR)
@@ -834,7 +837,9 @@ eval_special() {
       lisp_eval "$arg1" && global_bindings["$qual"]=$r
       r="$qual"
       ;;
-    *) error "eval_special: unknown form: ${symbols[$op]}"
+    *)
+      strip_tag $op
+      error "eval_special: unknown form: ${symbols[$r]}"
   esac
 }
 
