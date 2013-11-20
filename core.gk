@@ -80,3 +80,20 @@
   (fn (& fns)
     (fn (arg)
       (map (fn (f) (f arg)) fns))))
+
+(def repeat
+  (fn (n x)
+    (if (> n 0) (cons x (repeat (dec n) x)))))
+
+(def interleave
+  (fn (& lst)
+    (if (every? identity lst)
+      (concat (map car lst) (apply interleave (map cdr lst))))))
+
+(def interpose
+  (fn (sep lst)
+    (drop 1 (interleave (repeat (count lst) sep) lst))))
+
+(def join
+  (fn (sep lst)
+    (apply str (interpose sep lst))))
