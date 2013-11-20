@@ -71,7 +71,7 @@ readline() {
   done
   pb_get="${pb_get:0:$((${#pb_get}-1))}${pb_newline}$"
   IFS="$DEFAULT_IFS"
-  if [[ "$line" =~ [[:space:]]*- ]]; then
+  if [[ "$line" =~ ^[[:space:]]*- ]]; then
     echo "warning: lines starting with - aren't stored in history" >&2
   else
     history -s "$line"
@@ -132,8 +132,8 @@ symbol_limit=$heap_increment
 tag_marker="$(printf '\036')"
 
 declare -A type_tags=([000]=integer
-  [001]=symbol
-  [002]=cons)
+                      [001]=symbol
+                      [002]=cons)
 
 type() {
   if [[ "${1:0:1}" == "$tag_marker" ]]; then
@@ -734,7 +734,9 @@ eval_special() {
       lisp_eval "$arg1" && global_bindings["$arg0"]=$r
       r="$arg0"
       ;;
-    *) error "eval_special: unknown form: ${symbols[$op]}"
+    *)
+      strip_tag $op
+      error "eval_special: unknown form: ${symbols[$r]}"
   esac
 }
 
