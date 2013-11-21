@@ -87,7 +87,6 @@
       (do
         (sh! "clear")
         (apply println (map (fn (line) (str "\\t" line)) (car slides)))
-        (newline)
         (read)
         (recur (cdr slides))))))
 
