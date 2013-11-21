@@ -102,3 +102,12 @@
 (def join
   (fn (sep lst)
     (apply str (interpose sep lst))))
+
+(def empty?
+  (fn (lst)
+    (eq? lst '())))
+
+(def every-pred
+  (fn (& preds)
+    (fn (arg)
+      (every? (fn (pred) (pred arg)) preds))))
