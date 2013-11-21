@@ -81,10 +81,11 @@
 
 (def comp
   (fn (& fns)
-    (fn (& args)
-      (reduce (fn (val f) (f val))
-              (apply (car (reverse fns)) args)
-              (cdr (reverse fns))))))
+    ((fn (rfns)
+      (fn (& args)
+        (reduce (fn (val f) (f val))
+                (apply (car rfns) args)
+                (cdr rfns)))) (reverse fns))))
 
 (def repeat
   (fn (n x)
