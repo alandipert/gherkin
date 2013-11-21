@@ -766,10 +766,15 @@ eval_function() {
   local args="${cdr[$1]}"
   local old_frame_ptr=$frame_ptr
   frame_ptr=$stack_ptr
-  lisp_eval "$op" && eval_op="$r" && protect "$eval_op"
-  eval_args "$args"
-  apply "$eval_op"
-  unprotect
+  lisp_eval "$op" && eval_op="$r"
+  if [[ -z "$e" ]]; then
+    protect "$eval_op"
+    eval_args "$args"
+    if [[ -z "$e" ]]; then
+      apply "$eval_op"
+    fi
+    unprotect
+  fi
   stack_ptr=$frame_ptr
   frame_ptr=$old_frame_ptr
 }
