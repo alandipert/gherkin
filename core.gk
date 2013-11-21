@@ -37,6 +37,16 @@
 
 (def not (fn (x) (if x nil t)))
 
+(def inverse
+  (fn (pred)
+    (fn (x) (not (pred x)))))
+
+(def even?
+  (fn (n) (eq? 0 (mod n 2))))
+
+(def odd?
+  (inverse even?))
+
 (def drop
   (fn (n lst)
     (if (eq? 0 n)
