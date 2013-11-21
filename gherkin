@@ -548,7 +548,9 @@ eval_file() {
   local f="$1"
   local input=$(cat "$f")
   lisp_read <<<"(do $input)"
+  protect "$r"
   lisp_eval "$r"
+  unprotect
 }
 
 apply_primitive() {
@@ -838,7 +840,9 @@ repl() {
 eval_string() {
   local str="$1"
   lisp_read <<<"(do $str)"
+  protect "$r"
   lisp_eval "$r"
+  unprotect
 }
 
 # Start REPL if no arguments
