@@ -89,6 +89,13 @@
     (fn (arg)
       (map (fn (f) (f arg)) fns))))
 
+(def comp
+  (fn (& fns)
+    (fn (& args)
+      (reduce (fn (val f) (f val))
+              (apply (car (reverse fns)) args)
+              (cdr (reverse fns))))))
+
 (def repeat
   (fn (n x)
     (if (> n 0) (cons x (repeat (dec n) x)))))
@@ -105,3 +112,12 @@
 (def join
   (fn (sep lst)
     (apply str (interpose sep lst))))
+
+(def empty?
+  (fn (lst)
+    (eq? lst '())))
+
+(def every-pred
+  (fn (& preds)
+    (fn (arg)
+      (every? (fn (pred) (pred arg)) preds))))
