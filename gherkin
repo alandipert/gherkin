@@ -365,13 +365,28 @@ pr_list() {
   fi
 }
 
+escape_str() {
+  local i c
+  r=""
+  for ((i=0; i < ${#1}; i++)); do
+    c="${1:$i:1}"
+    case "$c" in
+      '"') r="${r}\\\"" ;;
+      '\') r="${r}\\\\" ;;
+      *) r="${r}${c}"
+    esac
+  done
+}
+
 pr() {
   type "$1"
   case "$r" in
     integer) strip_tag "$1" && printf '%d' "$r"                                         ;;
     cons)    pr_list "$1"                                                               ;;
     symbol)  strip_tag "$1" && printf '%s' "$(echo "${symbols[$r]}" | tr $pb_star "*")" ;;
-    *)       printf '"%s"' "$1"                                                              ;;
+    *)
+      escape_str "$1"
+      printf '"%s"' "$r"                                                                ;;
   esac
 }
 
@@ -561,7 +576,11 @@ apply_primitive() {
       ;;
     $EVAL)       lisp_eval "$arg0"    ;;
     $READ)       lisp_read            ;;
-    $MOD)        r="$((arg0 % arg1))" ;;
+    $MOD)
+      strip_tag "$arg0" && local x="$r"
+      strip_tag "$arg1" && local y="$r"
+      make_integer $((x % y))
+      ;;
     $LT)
       strip_tag "$arg0" && local x="$r"
       strip_tag "$arg1" && local y="$r"
@@ -582,12 +601,12 @@ apply_primitive() {
     $ADD)
       strip_tag "$arg0" && local x="$r"
       strip_tag "$arg1" && local y="$r"
-      r=$((x + y)) && make_integer "$r"
+      make_integer $((x + y))
       ;;
     $SUB)
       strip_tag "$arg0" && local x="$r"
       strip_tag "$arg1" && local y="$r"
-      r=$((x - y)) && make_integer "$r"
+      make_integer $((x - y))
       ;;
     $APPLY)
       local old_frame_ptr=$frame_ptr
@@ -621,7 +640,7 @@ apply_primitive() {
     $MUL)
       strip_tag "$arg0" && local x="$r"
       strip_tag "$arg1" && local y="$r"
-      r=$((x * y)) && make_integer "$r"
+      make_integer $((x * y))
       ;;
     $DIV)
       local x y
