@@ -544,10 +544,16 @@ apply_user() {
   r="$ret"
 }
 
+has_shebangP() { [[ "$(head -1 $1)" =~ ^#! ]]; }
+
 eval_file() {
-  local f="$1"
-  local input=$(cat "$f")
-  lisp_read <<<"(do $input)"
+  local f="$1" contents
+  if has_shebangP "$f"; then
+    contents="$(tail -n+2 "$f")"
+  else
+    contents="$(cat "$f")"
+  fi
+  lisp_read <<<"(do $contents)"
   protect "$r"
   lisp_eval "$r"
   unprotect
