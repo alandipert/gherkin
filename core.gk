@@ -105,3 +105,14 @@
 (def join
   (fn (sep lst)
     (apply str (interpose sep lst))))
+
+(def filter
+  (fn (pred lst)
+    (if lst
+      (if (pred (car lst))
+        (cons (car lst) (filter pred (cdr lst)))
+        (recur pred (cdr lst))))))
+
+(def remove
+  (fn (pred lst)
+    (filter (inverse pred) lst)))
