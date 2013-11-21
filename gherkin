@@ -429,38 +429,38 @@ specials[$DEF]=1
 specials[$DO]=1
 specials[$RECUR]=1
 
-defprim 'eq?'      && EQ=$r
-defprim 'nil?'     && NILP=$r
-defprim 'car'      && CAR=$r
-defprim 'cdr'      && CDR=$r
-defprim 'cons'     && CONS=$r
-defprim 'list'     && LIST=$r
-defprim 'eval'     && EVAL=$r
-defprim 'apply'    && APPLY=$r
-defprim 'read'     && READ=$r
-defprim '+'        && ADD=$r
-defprim '-'        && SUB=$r
-defprim "$pb_star" && MUL=$r
-defprim '/'        && DIV=$r
-defprim 'mod'      && MOD=$r
-defprim '<'        && LT=$r
-defprim '>'        && GT=$r
-defprim 'cons?'    && CONSP=$r
-defprim 'symbol?'  && SYMBOLP=$r
-defprim 'number?'  && NUMBERP=$r
-defprim 'string?'  && STRINGP=$r
-defprim 'fn?'      && FNP=$r
-defprim 'gensym'   && GENSYM=$r
-defprim 'random'   && RAND=$r
-defprim 'exit'     && EXIT=$r
-defprim 'println'  && PRINTLN=$r
-defprim 'sh'       && SH=$r
-defprim 'sh!'      && SH_BANG=$r
-defprim 'use'      && USE=$r
-defprim 'gc'       && GC=$r
-defprim 'error'    && ERROR=$r
-defprim 'type'     && TYPE=$r
-defprim 'str'      && STR=$r
+defprim 'eq?'       && EQ=$r
+defprim 'nil?'      && NILP=$r
+defprim 'car'       && CAR=$r
+defprim 'cdr'       && CDR=$r
+defprim 'cons'      && CONS=$r
+defprim 'list'      && LIST=$r
+defprim 'eval'      && EVAL=$r
+defprim 'apply'     && APPLY=$r
+defprim 'read'      && READ=$r
+defprim '+'         && ADD=$r
+defprim '-'         && SUB=$r
+defprim "$pb_star"  && MUL=$r
+defprim '/'         && DIV=$r
+defprim 'mod'       && MOD=$r
+defprim '<'         && LT=$r
+defprim '>'         && GT=$r
+defprim 'cons?'     && CONSP=$r
+defprim 'symbol?'   && SYMBOLP=$r
+defprim 'number?'   && NUMBERP=$r
+defprim 'string?'   && STRINGP=$r
+defprim 'fn?'       && FNP=$r
+defprim 'gensym'    && GENSYM=$r
+defprim 'random'    && RAND=$r
+defprim 'exit'      && EXIT=$r
+defprim 'println'   && PRINTLN=$r
+defprim 'sh'        && SH=$r
+defprim 'sh!'       && SH_BANG=$r
+defprim 'load-file' && LOAD_FILE=$r
+defprim 'gc'        && GC=$r
+defprim 'error'     && ERROR=$r
+defprim 'type'      && TYPE=$r
+defprim 'str'       && STR=$r
 
 eval_args() {
   local args="$1"
@@ -686,7 +686,7 @@ apply_primitive() {
       eval "${arg0}"
       r="$NIL"
       ;;
-    $USE)
+    $LOAD_FILE)
       local f
       if [[ -r ${arg0} ]]; then
         f="${arg0}"
