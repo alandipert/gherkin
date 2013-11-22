@@ -631,7 +631,7 @@ apply_primitive() {
       ;;
     $ERROR)
       printf 'lisp error: ' >&2
-      prn $arg0             >&2
+      prn "$arg0"           >&2
       ;;
     $TYPE)
       if [[ "$arg0" == $NIL ]]; then
@@ -864,10 +864,10 @@ while [ "$*" ]; do
   param=$1; shift; OPTARG=$1
   case $param in
     -e|--eval) eval_string "$OPTARG"; shift;
-      [[ $r != $NIL ]] && prn $r
+      [[ "$r" != $NIL ]] && prn "$r"
       ;;
     -l|--load) eval_file "$OPTARG"; shift;
-      [[ $r != $NIL ]] && prn $r
+      [[ "$r" != $NIL ]] && prn "$r"
       ;;
     -t|--test) ;;
     -r|--repl) repl ;;
