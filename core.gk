@@ -1,27 +1,75 @@
-(def inc
-  (fn (n) (+ n 1)))
+(def defmacro
+  (macro (name args & body)
+    (list 'def name (cons 'macro (cons args body)))))
 
-(def dec
-  (fn (n) (- n 1)))
+(defmacro defn (name args & body)
+  (list 'def name (cons 'fn (cons args body))))
 
-(def reduce
-  (fn (f init xs)
+(defmacro and (& args)
+  (if args
+    (if (cdr args)
+      (list 'if (car args) (cons 'and (cdr args)))
+      (car args))
+    t))
+
+(defn inc (n) (+ n 1))
+
+(defn dec (n) (- n 1))
+
+(defn drop (n lst)
+  (if (eq? 0 n)
+    lst
+    (recur (dec n) (cdr lst))))
+
+(defn take (n lst)
+  (if (and (> n 0) lst)
+    (cons (car lst) (take (dec n) (cdr lst)))))
+
+(defn partition-all (n lst)
+  (if lst (cons (take n lst) (partition-all n (drop n lst)))))
+
+(def map
+  (fn (f xs)
     (if xs
-      (recur f (f init (car xs)) (cdr xs))
-      init)))
+      (cons (f (car xs)) (map f (cdr xs))))))
 
-(def count
+(defn reduce (f init xs)
+  (if xs
+    (recur f (f init (car xs)) (cdr xs))
+    init))
+
+(def reverse
   (fn (lst)
-    (reduce (fn (x y) (inc x)) 0 lst)))
+    (reduce (fn (xs y) (cons y xs)) nil lst)))
 
-(def identity (fn (x) x))
+(defmacro let (bindings & body)
+  (if bindings
+    (reduce
+     (fn (inner pair)
+       (list
+        (cons 'fn (list (list (car pair)) inner))
+        (car (cdr pair))))
+     (cons 'do body)
+     (reverse (partition-all 2 bindings)))
+    (cons 'do body)))
 
-(def every?
-  (fn (pred xs)
-    (if xs
-      (if (pred (car xs))
-        (recur pred (cdr xs)))
-      t)))
+(defn or (& args)
+  (if args
+    (if (nil? (cdr args))
+      (car args)
+      (let (test-value (gensym))
+        (list 'let (list test-value (car args)))))))
+
+(defn count (lst)
+  (reduce (fn (x y) (inc x)) 0 lst))
+
+(defn identity (x) x)
+
+(defn every? (pred xs)
+  (if xs
+    (if (pred (car xs))
+      (recur pred (cdr xs)))
+    t))
 
 (def some
   (fn (pred xs)

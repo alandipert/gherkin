@@ -147,7 +147,9 @@ strip_tag() { r="${1:4}"; }
 
 typeP() {
   local obj="$1" tag="$2"
-  type "$obj" && [[ $r == "$tag" ]]
+  type "$obj" && local type="$r"
+  r=$NIL
+  [[ "$type" == "$tag" ]]
 }
 
 make_integer() { r="${tag_marker}000${1}"; }
@@ -346,23 +348,19 @@ string_list() {
 
 pr_list() {
   local lst="$1"
-  if [[ "${car[$lst]}" == $FN ]]; then
-    strip_tag "$lst" && printf '#<function:%s>' "$r" && r=$NIL
-  else
-    printf '('
+  printf '('
+  pr "${car[$lst]}"
+  lst="${cdr[$lst]}"
+  while typeP "$lst" cons; do
+    printf ' '
     pr "${car[$lst]}"
     lst="${cdr[$lst]}"
-    while typeP "$lst" cons; do
-      printf ' '
-      pr "${car[$lst]}"
-      lst="${cdr[$lst]}"
-    done
-    if [[ "$lst" != $NIL ]]; then
-      printf ' . '
-      pr "$lst"
-    fi
-    printf ')'
+  done
+  if [[ "$lst" != $NIL ]]; then
+    printf ' . '
+    pr "$lst"
   fi
+  printf ')'
 }
 
 escape_str() {
@@ -413,6 +411,7 @@ current_env="$NIL"
 
 intern_symbol 'quote'   && QUOTE=$r
 intern_symbol 'fn'      && FN=$r
+intern_symbol 'macro'   && MACRO=$r
 intern_symbol 'if'      && IF=$r
 intern_symbol 'set!'    && SET_BANG=$r
 intern_symbol 'def'     && DEF=$r
@@ -423,44 +422,55 @@ declare -A specials
 
 specials[$QUOTE]=1
 specials[$FN]=1
+specials[$MACRO]=1
 specials[$IF]=1
 specials[$SET_BANG]=1
 specials[$DEF]=1
 specials[$DO]=1
 specials[$RECUR]=1
 
-defprim 'eq?'       && EQ=$r
-defprim 'nil?'      && NILP=$r
-defprim 'car'       && CAR=$r
-defprim 'cdr'       && CDR=$r
-defprim 'cons'      && CONS=$r
-defprim 'list'      && LIST=$r
-defprim 'eval'      && EVAL=$r
-defprim 'apply'     && APPLY=$r
-defprim 'read'      && READ=$r
-defprim '+'         && ADD=$r
-defprim '-'         && SUB=$r
-defprim "$pb_star"  && MUL=$r
-defprim '/'         && DIV=$r
-defprim 'mod'       && MOD=$r
-defprim '<'         && LT=$r
-defprim '>'         && GT=$r
-defprim 'cons?'     && CONSP=$r
-defprim 'symbol?'   && SYMBOLP=$r
-defprim 'number?'   && NUMBERP=$r
-defprim 'string?'   && STRINGP=$r
-defprim 'fn?'       && FNP=$r
-defprim 'gensym'    && GENSYM=$r
-defprim 'random'    && RAND=$r
-defprim 'exit'      && EXIT=$r
-defprim 'println'   && PRINTLN=$r
-defprim 'sh'        && SH=$r
-defprim 'sh!'       && SH_BANG=$r
-defprim 'load-file' && LOAD_FILE=$r
-defprim 'gc'        && GC=$r
-defprim 'error'     && ERROR=$r
-defprim 'type'      && TYPE=$r
-defprim 'str'       && STR=$r
+defprim 'eq?'           && EQ=$r
+defprim 'nil?'          && NILP=$r
+defprim 'car'           && CAR=$r
+defprim 'cdr'           && CDR=$r
+defprim 'cons'          && CONS=$r
+defprim 'list'          && LIST=$r
+defprim 'eval'          && EVAL=$r
+defprim 'apply'         && APPLY=$r
+defprim 'read'          && READ=$r
+defprim '+'             && ADD=$r
+defprim '-'             && SUB=$r
+defprim "$pb_star"      && MUL=$r
+defprim '/'             && DIV=$r
+defprim 'mod'           && MOD=$r
+defprim '<'             && LT=$r
+defprim '>'             && GT=$r
+defprim 'cons?'         && CONSP=$r
+defprim 'symbol?'       && SYMBOLP=$r
+defprim 'number?'       && NUMBERP=$r
+defprim 'string?'       && STRINGP=$r
+defprim 'fn?'           && FNP=$r
+defprim 'macro?'        && MACROP=$r
+defprim 'gensym'        && GENSYM=$r
+defprim 'random'        && RAND=$r
+defprim 'exit'          && EXIT=$r
+defprim 'println'       && PRINTLN=$r
+defprim 'sh'            && SH=$r
+defprim 'sh!'           && SH_BANG=$r
+defprim 'load-file'     && LOAD_FILE=$r
+defprim 'gc'            && GC=$r
+defprim 'error'         && ERROR=$r
+defprim 'type'          && TYPE=$r
+defprim 'str'           && STR=$r
+defprim 'macroexpand-1' && MEXPAND=$r
+
+copy_args() {
+  local args="$1"
+  while [[ "$args" != $NIL ]]; do
+    stack[$((stack_ptr++))]="${car[$args]}"
+    args="${cdr[$args]}"
+  done
+}
 
 eval_args() {
   local args="$1"
@@ -503,7 +513,8 @@ analyze() {
     type "${car[$body]}"
     if [[ "$r" == cons ]]; then
       case "${car[${car[$body]}]}" in
-        $FN) environments["${car[$body]}"]="$env" ;;
+        $FN)    environments["${car[$body]}"]="$env" ;;
+        $MACRO) environments["${car[$body]}"]="$env" ;;
         $RECUR)
           recur_fns["${car[$body]}"]="$fn"
           recur_frames["${car[$body]}"]="$frame_ptr"
@@ -515,7 +526,7 @@ analyze() {
   done
 }
 
-apply_user() {
+apply_fn() {
   local fn="$1"
   local body="${cdr[${cdr[$fn]}]}"
   local params="${car[${cdr[$fn]}]}"
@@ -543,6 +554,13 @@ apply_user() {
   current_env="$old_env"
   r="$ret"
 }
+
+apply_macro() {
+  apply_fn "$1"
+  if [[ -z "${macroexpand_flag+x}" ]]; then
+    lisp_eval "$r"
+  fi
+} 
 
 has_shebangP() { [[ "$(head -1 $1)" =~ ^#! ]]; }
 
@@ -599,13 +617,14 @@ apply_primitive() {
       strip_tag "$arg1" && local y="$r"
       ((x > y)) && r=$T || r=$NIL
       ;;
-    $CONSP)      typeP "$arg0" cons    && r=$T                                 ;;
-    $SYMBOLP)    typeP "$arg0" symbol  && r=$T || r=$NIL                       ;;
-    $NUMBERP)    typeP "$arg0" integer && r=$T || r=$NIL                       ;;
-    $STRINGP)    typeP "$arg0" string  && r=$T || r=$NIL                       ;;
-    $FNP)        typeP "$arg0" cons    && [[ "${car[$arg0]}" == $FN ]] && r=$T ;;
-    $GC)         gc && r=$NIL                                                  ;;
-    $GENSYM)     gensym                                                        ;;
+    $CONSP)      typeP "$arg0" cons    && r=$T || r=$NIL                          ;;
+    $SYMBOLP)    typeP "$arg0" symbol  && r=$T || r=$NIL                          ;;
+    $NUMBERP)    typeP "$arg0" integer && r=$T || r=$NIL                          ;;
+    $STRINGP)    typeP "$arg0" string  && r=$T || r=$NIL                          ;;
+    $FNP)        typeP "$arg0" cons    && [[ "${car[$arg0]}" == $FN ]] && r=$T    ;;
+    $MACROP)     typeP "$arg0" cons    && [[ "${car[$arg0]}" == $MACRO ]] && r=$T ;;
+    $GC)         gc && r=$NIL                                                     ;;
+    $GENSYM)     gensym                                                           ;;
     $ADD)
       strip_tag "$arg0" && local x="$r"
       strip_tag "$arg1" && local y="$r"
@@ -640,6 +659,8 @@ apply_primitive() {
         type "$arg0"
         if [[ "$r" == cons ]] && [[ "${car[$arg0]}" == $FN ]]; then
           intern_symbol "function"
+        elif [[ "$r" == cons ]] && [[ "${car[$arg0]}" == $MACRO ]]; then
+          intern_symbol "macro"
         else
           intern_symbol "$r"
         fi
@@ -700,6 +721,11 @@ apply_primitive() {
         r="$NIL"
       fi
       ;;
+    $MEXPAND)
+      macroexpand_flag=1
+      lisp_eval "${arg0}"
+      unset macroexpand_flag
+      ;;
     $EXIT)
       strip_tag $arg0
       exit "$r"
@@ -710,7 +736,9 @@ apply_primitive() {
 
 apply() {
   if [[ "${car[$1]}" == "$FN" ]]; then
-    apply_user "$1"
+    apply_fn "$1"
+  elif [[ "${car[$1]}" == "$MACRO" ]]; then
+    apply_macro "$1"
   else
     apply_primitive "$1"
   fi
@@ -733,9 +761,10 @@ eval_special() {
   local arg1="${car[${cdr[$args]}]}"
   local arg2="${car[${cdr[${cdr[$args]}]}]}"
   case $op in
-    $QUOTE)  r="$arg0"        ;;
-    $DO)     do_ $args      ;;
-    $FN)     r=$special     ;;
+    $QUOTE) r="$arg0"  ;;
+    $DO)    do_ $args  ;;
+    $FN)    r=$special ;;
+    $MACRO) r=$special ;;
     $IF)
       lisp_eval "$arg0"
       [[ "$r" != "$NIL" ]] && lisp_eval "$arg1" || lisp_eval "$arg2"
@@ -755,7 +784,7 @@ eval_special() {
         stack[$((stack_ptr++))]="$r"
         args="${cdr[$args]}"
       done
-      apply_user "${recur_fns[$1]}"
+      apply_fn "${recur_fns[$1]}"
       ;;
     $DEF)
       lisp_eval "$arg1" && global_bindings["$arg0"]=$r
@@ -767,6 +796,10 @@ eval_special() {
   esac
 }
 
+macroP() {
+  typeP "$1" cons && [[ "${car[$1]}" == $MACRO ]]
+}
+
 eval_function() {
   local op="${car[$1]}" eval_op
   local args="${cdr[$1]}"
@@ -775,7 +808,11 @@ eval_function() {
   lisp_eval "$op" && eval_op="$r"
   if [[ -z "$e" ]]; then
     protect "$eval_op"
-    eval_args "$args"
+    if macroP "$eval_op"; then
+      copy_args "$args"
+    else
+      eval_args "$args"
+    fi
     if [[ -z "$e" ]]; then
       apply "$eval_op"
     fi
