@@ -10,6 +10,8 @@ gherkin is currently **alpha** status, but our hope is to continue feature devel
 
 ## Try gherkin
 
+*gherkin requires GNU Bash version 4 or higher.  If you're on Linux, this is probably already your shell.  If you're on a Mac, we recommend you install a recent version of Bash with [Homebrew](http://brew.sh/).*
+
 #### REPL
 
 Start a Read-Evaluate-Print-Loop ([REPL](http://en.wikipedia.org/wiki/REPL)) and evaluate a simple expression:
