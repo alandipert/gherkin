@@ -1,5 +1,3 @@
-;;(ns core)
-
 (def inc
   (fn (n) (+ n 1)))
 
@@ -12,6 +10,10 @@
       (recur f (f init (car xs)) (cdr xs))
       init)))
 
+(def count
+  (fn (lst)
+    (reduce (fn (x y) (inc x)) 0 lst)))
+
 (def identity (fn (x) x))
 
 (def every?
@@ -20,6 +22,46 @@
       (if (pred (car xs))
         (recur pred (cdr xs)))
       t)))
+
+(def some
+  (fn (pred xs)
+    (if xs
+      (if (pred (car xs))
+        t
+        (recur pred (cdr xs)))
+      nil)))
+
+(def or (fn (& xs) (some identity xs)))
+
+(def and (fn (& xs) (every? identity xs)))
+
+(def not (fn (x) (if x nil t)))
+
+(def inverse
+  (fn (pred)
+    (fn (x) (not (pred x)))))
+
+(def even?
+  (fn (n) (eq? 0 (mod n 2))))
+
+(def odd?
+  (inverse even?))
+
+(def drop
+  (fn (n lst)
+    (if (eq? 0 n)
+      lst
+      (recur (dec n) (cdr lst)))))
+
+(def take
+  (fn (n lst)
+    (if (> n 0)
+      (if lst
+        (cons (car lst) (take (dec n) (cdr lst)))))))
+
+(def nth
+  (fn (n lst)
+    (car (drop n lst))))
 
 (def map
   (fn (f xs)
@@ -46,3 +88,31 @@
   (fn (& fns)
     (fn (arg)
       (map (fn (f) (f arg)) fns))))
+
+(def repeat
+  (fn (n x)
+    (if (> n 0) (cons x (repeat (dec n) x)))))
+
+(def interleave
+  (fn (& lst)
+    (if (every? identity lst)
+      (concat (map car lst) (apply interleave (map cdr lst))))))
+
+(def interpose
+  (fn (sep lst)
+    (drop 1 (interleave (repeat (count lst) sep) lst))))
+
+(def join
+  (fn (sep lst)
+    (apply str (interpose sep lst))))
+
+(def filter
+  (fn (pred lst)
+    (if lst
+      (if (pred (car lst))
+        (cons (car lst) (filter pred (cdr lst)))
+        (recur pred (cdr lst))))))
+
+(def remove
+  (fn (pred lst)
+    (filter (inverse pred) lst)))
