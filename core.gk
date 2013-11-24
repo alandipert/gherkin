@@ -1,8 +1,27 @@
+;;(ns core)
+
+(def first car)
+
+(def rest cdr)
+
+(def ffirst (fn (xs) (car (car xs))))
+
+(def second (fn (xs) (car (cdr xs))))
+
+(def last
+  (fn (xs)
+    (if (cdr xs)
+      (recur (cdr xs))
+      (first xs))))
+
 (def inc
   (fn (n) (+ n 1)))
 
 (def dec
   (fn (n) (- n 1)))
+
+(def zero?
+  (fn (n) (eq? 0 n)))
 
 (def reduce
   (fn (f init xs)
@@ -37,7 +56,7 @@
 
 (def not (fn (x) (if x nil t)))
 
-(def inverse
+(def complement
   (fn (pred)
     (fn (x) (not (pred x)))))
 
@@ -45,7 +64,7 @@
   (fn (n) (eq? 0 (mod n 2))))
 
 (def odd?
-  (inverse even?))
+  (complement even?))
 
 (def drop
   (fn (n lst)
@@ -115,4 +134,4 @@
 
 (def remove
   (fn (pred lst)
-    (filter (inverse pred) lst)))
+    (filter (complement pred) lst)))
