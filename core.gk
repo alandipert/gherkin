@@ -116,3 +116,11 @@
 (def remove
   (fn (pred lst)
     (filter (inverse pred) lst)))
+
+(def comp
+  (fn (& fns)
+    ((fn (rfns)
+      (fn (& args)
+        (reduce (fn (val f) (f val))
+                (apply (car rfns) args)
+                (cdr rfns)))) (reverse fns))))
