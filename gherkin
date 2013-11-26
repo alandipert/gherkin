@@ -25,7 +25,8 @@ e=""
 
 error() {
   [[ -z "$e" ]] && e="$1" || e="$1\n$e"
-  r=$NIL;
+  r=$NIL
+  return 1
 }
 
 # pushback reader ##############################################################
@@ -393,6 +394,7 @@ intern_symbol 'set!'    && SET_BANG=$r
 intern_symbol 'def'     && DEF=$r
 intern_symbol 'do'      && DO=$r
 intern_symbol 'recur'   && RECUR=$r
+intern_symbol 'let'     && LET=$r
 
 declare -A specials
 
@@ -403,6 +405,7 @@ specials[$SET_BANG]=1
 specials[$DEF]=1
 specials[$DO]=1
 specials[$RECUR]=1
+specials[$LET]=1
 
 defprim 'eq?'       && EQ=$r
 defprim 'nil?'      && NILP=$r
@@ -680,6 +683,7 @@ apply_primitive() {
       exit "$r"
       ;;
     *) strip_tag "$1" && error "unknown primitive function type: ${symbols[$r]}"
+      return 1
   esac
 }
 
@@ -688,6 +692,21 @@ apply() {
     apply_user "$1"
   else
     apply_primitive "$1"
+  fi
+}
+
+add_bindings() {
+  local pairs="$1"
+  local val
+  while [[ "$pairs" != $NIL && "${cdr[$pairs]}" != $NIL ]]; do
+    lisp_eval "${car[${cdr[$pairs]}]}" && val="$r"
+    if [[ -n "$e" ]]; then return 1; fi
+    acons "${car[$pairs]}" "$val" "$current_env" && current_env="$r"
+    pairs="${cdr[${cdr[$pairs]}]}"
+  done
+  if [[ "$pairs" != $NIL ]]; then
+    error "Bad 'let' bindings. Must be an even number of binding forms."
+    return 1
   fi
 }
 
@@ -735,6 +754,15 @@ eval_special() {
     $DEF)
       lisp_eval "$arg1" && global_bindings["$arg0"]=$r
       r="$arg0"
+      ;;
+    $LET)
+      local let_body="${cdr[$args]}"
+      local old_env="$current_env"
+      add_bindings $arg0
+      if [[ -z "$e" ]]; then
+        do_ $let_body
+      fi
+      current_env="$old_env"
       ;;
     *)
       strip_tag $op
@@ -784,6 +812,7 @@ lisp_eval() {
     string)  r="$1" ;;
     *)
       error "lisp_eval: unrecognized type"
+      return 1
       ;;
   esac
 }
