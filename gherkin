@@ -36,6 +36,7 @@ pb_newline="$(printf '\034')"
 pb_star="$(printf '\035')"
 pb_get="^$"
 pb_unget="^$"
+history_flag=1
 
 readline() {
   IFS=$'\n\b'
@@ -49,7 +50,7 @@ readline() {
   IFS="$DEFAULT_IFS"
   if [[ "$line" =~ ^[[:space:]]*- ]]; then
     echo "warning: lines starting with - aren't stored in history" >&2
-  else
+  elif [[ -n "$history_flag" ]]; then
     history -s "$line"
   fi
 }
@@ -542,7 +543,9 @@ eval_file() {
   else
     contents="$(cat "$f")"
   fi
+  history_flag=
   lisp_read <<<"(do $contents)"
+  history_flag=1
   protect "$r"
   lisp_eval "$r"
   unprotect
