@@ -597,6 +597,17 @@ eval_file() {
   unprotect
 }
 
+check_numbers() {
+  while [[ -n "$1" ]]; do
+    if ! typeP "$1" integer ; then
+      str "$1"
+      error "'$r' is not a number"
+      return 1
+    fi
+    shift
+  done
+}
+
 apply_primitive() {
   local primitive="$1"
   local arg0="${stack[$frame_ptr]}"
@@ -636,19 +647,25 @@ apply_primitive() {
     $EVAL)       lisp_eval "$arg0"    ;;
     $READ)       lisp_read            ;;
     $MOD)
-      strip_tag "$arg0" && local x="$r"
-      strip_tag "$arg1" && local y="$r"
-      make_integer $((x % y))
+      if check_numbers "$arg0" "$arg1" ; then
+        strip_tag "$arg0" && local x="$r"
+        strip_tag "$arg1" && local y="$r"
+        make_integer $((x % y))
+      fi
       ;;
     $LT)
-      strip_tag "$arg0" && local x="$r"
-      strip_tag "$arg1" && local y="$r"
-      ((x < y)) && r=$T || r=$NIL
+      if check_numbers "$arg0" "$arg1" ; then
+        strip_tag "$arg0" && local x="$r"
+        strip_tag "$arg1" && local y="$r"
+        ((x < y)) && r=$T || r=$NIL
+      fi
       ;;
     $GT)
-      strip_tag "$arg0" && local x="$r"
-      strip_tag "$arg1" && local y="$r"
-      ((x > y)) && r=$T || r=$NIL
+      if check_numbers "$arg0" "$arg1" ; then
+        strip_tag "$arg0" && local x="$r"
+        strip_tag "$arg1" && local y="$r"
+        ((x > y)) && r=$T || r=$NIL
+      fi
       ;;
     $CONSP)      typeP "$arg0" cons    && r=$T                                 ;;
     $SYMBOLP)    typeP "$arg0" symbol  && r=$T || r=$NIL                       ;;
@@ -658,14 +675,18 @@ apply_primitive() {
     $GC)         gc && r=$NIL                                                  ;;
     $GENSYM)     gensym                                                        ;;
     $ADD)
-      strip_tag "$arg0" && local x="$r"
-      strip_tag "$arg1" && local y="$r"
-      make_integer $((x + y))
+      if check_numbers "$arg0" "$arg1" ; then
+        strip_tag "$arg0" && local x="$r"
+        strip_tag "$arg1" && local y="$r"
+        make_integer $((x + y))
+      fi
       ;;
     $SUB)
-      strip_tag "$arg0" && local x="$r"
-      strip_tag "$arg1" && local y="$r"
-      make_integer $((x - y))
+      if check_numbers "$arg0" "$arg1" ; then
+        strip_tag "$arg0" && local x="$r"
+        strip_tag "$arg1" && local y="$r"
+        make_integer $((x - y))
+      fi
       ;;
     $APPLY)
       local old_frame_ptr=$frame_ptr
@@ -697,19 +718,25 @@ apply_primitive() {
       fi
       ;;
     $MUL)
-      strip_tag "$arg0" && local x="$r"
-      strip_tag "$arg1" && local y="$r"
-      make_integer $((x * y))
+      if check_numbers "$arg0" "$arg1" ; then
+        strip_tag "$arg0" && local x="$r"
+        strip_tag "$arg1" && local y="$r"
+        make_integer $((x * y))
+      fi
       ;;
     $DIV)
       local x y
-      strip_tag $arg0 && x=$r
-      strip_tag $arg1 && y=$r
-      make_integer $((x / y))
+      if check_numbers "$arg0" "$arg1" ; then
+        strip_tag $arg0 && x=$r
+        strip_tag $arg1 && y=$r
+        make_integer $((x / y))
+      fi
       ;;
     $RAND)
-      strip_tag $arg0
-      make_integer "$((RANDOM % r))"
+      if check_numbers "$arg0" ; then
+        strip_tag $arg0
+        make_integer "$((RANDOM % r))"
+      fi
       ;;
     $PRINTLN)
       listify_args "cons" && local to_print="$r"
