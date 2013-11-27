@@ -215,7 +215,7 @@ interpret_token() {
 read_token() {
   local token=""
   while getc; do
-    if [[ "$r" =~ ('('|')'|[[:space:]]|$pb_newline|,) ]]; then
+    if [[ "$r" =~ ('('|')'|'['|']'|[[:space:]]|$pb_newline|,) ]]; then
       ungetc && break
     else
       token="${token}${r}"
@@ -266,9 +266,13 @@ read_list() {
     *)
       ungetc
       skip_blanks
-      read_list ")"
+      read_list "$end"
       cons "$read1" "$r"
   esac
+}
+
+read_vector() {
+  read_list $1
 }
 
 read_string() {
@@ -290,6 +294,10 @@ lisp_read() {
       ;;
     "(")
       read_list ")"
+      ;;
+    "[")
+      read_vector "]"
+      cons "$LVECTOR" $r
       ;;
     "'")
       lisp_read && read1="$r"
@@ -377,9 +385,10 @@ stack_ptr=0
 
 declare -a stack
 
-intern_symbol '&'   && AMP="$r"
-intern_symbol 'nil' && NIL="$r"
-intern_symbol 't'   && T="$r"
+intern_symbol '&'      && AMP="$r"
+intern_symbol 'nil'    && NIL="$r"
+intern_symbol 't'      && T="$r"
+intern_symbol 'vector' && LVECTOR="$r"
 global_bindings[$NIL]="$NIL"
 global_bindings[$T]="$T"
 car[$NIL]="$NIL"
@@ -413,6 +422,7 @@ defprim 'car'       && CAR=$r
 defprim 'cdr'       && CDR=$r
 defprim 'cons'      && CONS=$r
 defprim 'list'      && LIST=$r
+defprim 'vector'    && VECTOR=$r
 defprim 'eval'      && EVAL=$r
 defprim 'apply'     && APPLY=$r
 defprim 'read'      && READ=$r
@@ -503,6 +513,7 @@ apply_user() {
 
   [[ -z "${environments[$1]}" ]] && local env=$NIL || local env="${environments[$fn]}"
 
+  if [[ ${car[$params]} == "$LVECTOR" ]]; then params="${cdr[$params]}"; fi
   while [[ "$params" != $NIL && "${car[$params]}" != $AMP ]]; do
     acons "${car[$params]}" "${stack[$((p++))]}" "$env" && env="$r"
     params="${cdr[$params]}"
@@ -551,6 +562,7 @@ apply_primitive() {
     $CDR)        r="${cdr[$arg0]}"                  ;;
     $CONS)       cons "$arg0" "$arg1"               ;;
     $LIST)       listify_args                       ;;
+    $VECTOR)     listify_args                       ;;
     $STR)
       listify_args && strs="$r"
       local ret=""
@@ -696,8 +708,12 @@ apply() {
 }
 
 add_bindings() {
-  local pairs="$1"
-  local val
+  local pairs val
+  if [[ "${car[$1]}" == $LVECTOR ]]; then
+    pairs="${cdr[$1]}"
+  else
+    pairs="$1"
+  fi
   while [[ "$pairs" != $NIL && "${cdr[$pairs]}" != $NIL ]]; do
     lisp_eval "${car[${cdr[$pairs]}]}" && val="$r"
     if [[ -n "$e" ]]; then return 1; fi

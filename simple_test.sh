@@ -5,7 +5,7 @@ cat << "EOF"
 EOF
 )
 
-actual=$(./gherkin -e '(load-file "core") (sh (str "grep -h bash " (join " " (remove (fn (x) (or (eq? "simple_test.sh" x) (eq? "README.md" x))) (sh "ls")))))')
+actual=$(./gherkin -e '(load-file "core") (sh (str "grep -h bash " (join " " (remove (fn [x] (or (eq? "simple_test.sh" x) (eq? "README.md" x))) (sh "ls")))))')
 
 if [[ "$expected" == "$actual" ]]; then
   echo "test 1/1 passed"
