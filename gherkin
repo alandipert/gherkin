@@ -511,7 +511,7 @@ apply_user() {
   local ret="$NIL"
   local old_env
 
-  [[ -z "${environments[$1]}" ]] && local env=$NIL || local env="${environments[$fn]}"
+  [[ -z "${environments[$fn]}" ]] && local env=$NIL || local env="${environments[$fn]}"
 
   if [[ ${car[$params]} == "$LVECTOR" ]]; then params="${cdr[$params]}"; fi
   while [[ "$params" != $NIL && "${car[$params]}" != $AMP ]]; do
@@ -765,6 +765,7 @@ eval_special() {
         stack[$((stack_ptr++))]="$r"
         args="${cdr[$args]}"
       done
+      current_env="${environments[$1]}"
       apply_user "${recur_fns[$1]}"
       ;;
     $DEF)
