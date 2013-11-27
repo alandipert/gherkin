@@ -110,7 +110,9 @@ tag_marker="$(printf '\036')"
 
 declare -A type_tags=([000]=integer
                       [001]=symbol
-                      [002]=cons)
+                      [002]=cons
+                      [003]=vector
+                      [004]=keyword)
 
 type() {
   if [[ "${1:0:1}" == "$tag_marker" ]]; then
@@ -128,6 +130,8 @@ typeP() {
 }
 
 make_integer() { r="${tag_marker}000${1}"; }
+
+make_keyword() { r="${tag_marker}004${1:1}"; }
 
 intern_symbol() {
   if [[ -n "${interned_strings[$1]}" ]]; then
@@ -149,8 +153,9 @@ defprim() {
 
 cons() {
   local the_car="$1" the_cdr="$2"
-  while [[ -n "${marks[${tag_marker}002${cons_ptr}]}" ]]; do
-    unset marks["${tag_marker}002$((cons_ptr++))"]
+  while [[ -n "${marks[${tag_marker}002${cons_ptr}]}" || -n "${marks[${tag_marker}003${cons_ptr}]}" ]]; do
+    unset marks["${tag_marker}002$((cons_ptr))"]
+    unset marks["${tag_marker}003$((cons_ptr++))"]
   done
   if [[ $cons_ptr == $cons_limit ]]; then
     mark "$the_car"
@@ -163,6 +168,23 @@ cons() {
   car["${tag_marker}002${cons_ptr}"]="$the_car"
   cdr["${tag_marker}002${cons_ptr}"]="$the_cdr"
   r="${tag_marker}002${cons_ptr}"
+  cons_ptr="$((cons_ptr + 1))"
+}
+
+vector() {
+  local the_car="$1" the_cdr="$2"
+  while [[ -n "${marks[${tag_marker}002${cons_ptr}]}" || -n "${marks[${tag_marker}003${cons_ptr}]}" ]]; do
+    unset marks["${tag_marker}002$((cons_ptr))"]
+    unset marks["${tag_marker}003$((cons_ptr++))"]
+  done
+  if [[ $cons_ptr == $cons_limit ]]; then
+    mark "$the_car"
+    mark "$the_cdr"
+    gc
+  fi
+  car["${tag_marker}003${cons_ptr}"]="$the_car"
+  cdr["${tag_marker}003${cons_ptr}"]="$the_cdr"
+  r="${tag_marker}003${cons_ptr}"
   cons_ptr="$((cons_ptr + 1))"
 }
 
@@ -180,7 +202,7 @@ unprotect() { protected_ptr="$((protected_ptr - 1))"; }
 
 mark() {
   local object="$1"
-  while typeP "$object" cons && [[ -z "${marks[$object]}" ]]; do
+  while ( typeP "$object" cons || typeP "$object" vector ) && [[ -z "${marks[$object]}" ]]; do
     marks["$object"]=1
     mark "${car[$object]}"
     object="${cdr[$object]}"
@@ -194,8 +216,9 @@ gc() {
   for k in "${!stack[@]}";           do mark "${stack[$k]}";           done
   for k in "${!global_bindings[@]}"; do mark "${global_bindings[$k]}"; done
   cons_ptr=0
-  while [[ -n "${marks[${tag_marker}002${cons_ptr}]}" ]]; do
-    unset marks["${tag_marker}002$((cons_ptr++))"]
+  while [[ -n "${marks[${tag_marker}002${cons_ptr}]}" || -n "${marks[${tag_marker}003${cons_ptr}]}" ]]; do
+    unset marks["${tag_marker}002$((cons_ptr))"]
+    unset marks["${tag_marker}003$((cons_ptr++))"]
   done
   if [[ $cons_ptr == $cons_limit ]]; then
     echo "expanding heap..." >&2
@@ -208,6 +231,8 @@ gc() {
 interpret_token() {
   [[ "$1" =~ ^-?[[:digit:]]+$ ]] \
     && r=integer && return
+  [[ "$1" =~ ^:([[:graph:]]|$pb_star)+$ ]] \
+    && r=keyword && return
   [[ "$1" =~ ^([[:graph:]]|$pb_star)+$ ]] \
     && r=symbol && return
   return 1
@@ -227,6 +252,7 @@ read_token() {
     case "$r" in
       symbol)  intern_symbol "$token" && return ;;
       integer) make_integer "$token" && return ;;
+      keyword) make_keyword "$token" && return ;;
       *) error "unknown token type: '$r'"
     esac
   else
@@ -245,8 +271,10 @@ skip_comment() {
   while [[ "$r" != "$pb_newline" ]]; do getc; done
 }
 
-read_list() {
-  local end="$1" ch read1 read2
+read_sequence() {
+  local end="$1"
+  local construct="$2"
+  local ch read1 read2
   if lisp_read; then
     read1="$r"
   else
@@ -261,19 +289,23 @@ read_list() {
       lisp_read && read2="$r"
       skip_blanks
       getc
-      cons "$read1" "$read2"
+      $construct "$read1" "$read2"
       ;;
-    "$end") cons "$read1" $NIL ;;
+    "$end") $construct "$read1" $NIL ;;
     *)
       ungetc
       skip_blanks
-      read_list "$end"
-      cons "$read1" "$r"
+      read_sequence "$end" "$construct"
+      $construct "$read1" "$r"
   esac
 }
 
+read_list() {
+  read_sequence ')' "cons"
+}
+
 read_vector() {
-  read_list $1
+  read_sequence ']' "vector"
 }
 
 read_string() {
@@ -294,11 +326,10 @@ lisp_read() {
       read_string
       ;;
     "(")
-      read_list ")"
+      read_list
       ;;
     "[")
-      read_vector "]"
-      cons "$LVECTOR" $r
+      read_vector
       ;;
     "'")
       lisp_read && read1="$r"
@@ -328,27 +359,7 @@ string_list() {
 }
 
 # printer ######################################################################
-
-pr_list() {
-  local lst="$1"
-  if [[ "${car[$lst]}" == $FN ]]; then
-    strip_tag "$lst" && printf '#<function:%s>' "$r" && r=$NIL
-  else
-    printf '('
-    pr "${car[$lst]}"
-    lst="${cdr[$lst]}"
-    while typeP "$lst" cons; do
-      printf ' '
-      pr "${car[$lst]}"
-      lst="${cdr[$lst]}"
-    done
-    if [[ "$lst" != $NIL ]]; then
-      printf ' . '
-      pr "$lst"
-    fi
-    printf ')'
-  fi
-}
+printing=
 
 escape_str() {
   local i c
@@ -363,20 +374,55 @@ escape_str() {
   done
 }
 
-pr() {
+str_list() {
+  local lst="$1"
+  local ret
+  if [[ "${car[$lst]}" == $FN ]]; then
+    strip_tag "$lst" && printf -v r '#<function:%s>' "$r"
+  else
+    ret="$3"
+    str "${car[$lst]}"
+    ret="${ret}${r}"
+    lst="${cdr[$lst]}"
+    while typeP "$lst" "$2" ; do
+      ret="${ret} "
+      str "${car[$lst]}"
+      ret="${ret}${r}"
+      lst="${cdr[$lst]}"
+    done
+    if [[ "$lst" != $NIL ]]; then
+      ret="${ret} . "
+      str "$lst"
+      ret="${ret}${r}"
+    fi
+    r="${ret}$4"
+  fi
+}
+
+str() {
   type "$1"
   case "$r" in
-    integer) strip_tag "$1" && printf '%d' "$r"                                         ;;
-    cons)    pr_list "$1"                                                               ;;
-    symbol)  strip_tag "$1" && printf '%s' "$(echo "${symbols[$r]}" | tr $pb_star "*")" ;;
+    integer) strip_tag "$1" && printf -v r '%d' "$r" ;;
+    cons) str_list "$1" "cons" '(' ')' ;;
+    vector) str_list "$1" "vector" '[' ']' ;;
+    symbol) strip_tag "$1" && printf -v r '%s' "$(echo "${symbols[$r]}" | tr $pb_star "*")" ;;
+    keyword) strip_tag "$1" && printf -v r ':%s' "$r" ;;
     *)
-      escape_str "$1"
-      printf '"%s"' "$r"                                                                ;;
+      if [[ -n $printing ]]; then
+        escape_str "$1"
+        printf -v r '"%s"' "$r"
+      else
+        printf -v r '%s' "$1"
+      fi
+      ;;
   esac
 }
 
 prn() {
-  pr "$1" && echo
+  printing=1
+  str "$1"
+  printing=
+  printf '%s' "$r" && echo
 }
 
 # environment & control ########################################################
@@ -389,7 +435,6 @@ declare -a stack
 intern_symbol '&'      && AMP="$r"
 intern_symbol 'nil'    && NIL="$r"
 intern_symbol 't'      && T="$r"
-intern_symbol 'vector' && LVECTOR="$r"
 global_bindings[$NIL]="$NIL"
 global_bindings[$T]="$T"
 car[$NIL]="$NIL"
@@ -424,6 +469,7 @@ defprim 'cdr'       && CDR=$r
 defprim 'cons'      && CONS=$r
 defprim 'list'      && LIST=$r
 defprim 'vector'    && VECTOR=$r
+defprim 'keyword'   && KEYWORD=$r
 defprim 'eval'      && EVAL=$r
 defprim 'apply'     && APPLY=$r
 defprim 'read'      && READ=$r
@@ -461,10 +507,11 @@ eval_args() {
 }
 
 listify_args() {
+  local construct="$1"
   local p=$((stack_ptr - 1)) ret=$NIL stop
-  [[ -z "$1" ]] && stop=$frame_ptr || stop="$1"
+  [[ -z "$2" ]] && stop=$frame_ptr || stop="$2"
   while ((stop <= p)); do
-    cons "${stack[$p]}" "$ret" && ret="$r"
+    $construct "${stack[$p]}" "$ret" && ret="$r"
     p=$((p - 1))
   done
   r="$ret"
@@ -514,14 +561,13 @@ apply_user() {
 
   [[ -z "${environments[$fn]}" ]] && local env=$NIL || local env="${environments[$fn]}"
 
-  if [[ ${car[$params]} == "$LVECTOR" ]]; then params="${cdr[$params]}"; fi
   while [[ "$params" != $NIL && "${car[$params]}" != $AMP ]]; do
     acons "${car[$params]}" "${stack[$((p++))]}" "$env" && env="$r"
     params="${cdr[$params]}"
   done
 
   if [[ "${car[$params]}" == $AMP ]]; then
-    listify_args "$p" && local more="$r"
+    listify_args "cons" "$p" && local more="$r"
     acons "${car[${cdr[$params]}]}" "$more" "$env" && env="$r"
   fi
 
@@ -564,13 +610,25 @@ apply_primitive() {
     $CAR)        r="${car[$arg0]}"                  ;;
     $CDR)        r="${cdr[$arg0]}"                  ;;
     $CONS)       cons "$arg0" "$arg1"               ;;
-    $LIST)       listify_args                       ;;
-    $VECTOR)     listify_args                       ;;
+    $LIST)       listify_args "cons"                ;;
+    $VECTOR)     listify_args "vector"              ;;
+    $KEYWORD)
+      type "$arg0"
+      case $r in
+        string) make_keyword "$arg0" ;;
+        keyword) r="$arg0" ;;
+        *)
+          strip_tag "$arg0"
+          error "Unable to make keyword from: $r"
+          r="$NIL"
+      esac
+      ;;
     $STR)
-      listify_args && strs="$r"
+      listify_args "cons" && strs="$r"
       local ret=""
       while [[ "$strs" != "$NIL" ]]; do
-        ret="${ret}${car[$strs]}"
+        str "${car[$strs]}"
+        ret="${ret}$r"
         strs="${cdr[$strs]}"
       done
       r="$ret"
@@ -654,7 +712,7 @@ apply_primitive() {
       make_integer "$((RANDOM % r))"
       ;;
     $PRINTLN)
-      listify_args && local to_print="$r"
+      listify_args "cons" && local to_print="$r"
       while [[ "$to_print" != "$NIL" ]]; do
         type "${car[$to_print]}"
         case "$r" in
@@ -711,12 +769,7 @@ apply() {
 }
 
 add_bindings() {
-  local pairs val
-  if [[ "${car[$1]}" == $LVECTOR ]]; then
-    pairs="${cdr[$1]}"
-  else
-    pairs="$1"
-  fi
+  local pairs="$1" val
   while [[ "$pairs" != $NIL && "${cdr[$pairs]}" != $NIL ]]; do
     lisp_eval "${car[${cdr[$pairs]}]}" && val="$r"
     if [[ -n "$e" ]]; then return 1; fi
@@ -828,8 +881,20 @@ lisp_eval() {
         eval_function "$1"
       fi
       ;;
+    vector)
+      local old_frame_ptr=$frame_ptr
+      local old_stack_ptr=$stack_ptr
+      frame_ptr=$stack_ptr
+      eval_args "$1"
+      if [[ -z "$e" ]]; then
+        listify_args "vector"
+      fi
+      stack_ptr=$old_stack_ptr
+      frame_ptr=$old_frame_ptr
+      ;;
     integer) r=$1   ;;
     string)  r="$1" ;;
+    keyword) r="$1" ;;
     *)
       error "lisp_eval: unrecognized type"
       return 1
