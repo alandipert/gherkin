@@ -89,6 +89,7 @@ symbol_ptr=0
 
 protected_ptr=0
 gensym_counter=0
+array_cntr=0
 
 declare -A interned_strings
 declare -A car
@@ -107,6 +108,8 @@ cons_limit=$heap_increment
 symbol_limit=$heap_increment
 
 tag_marker="$(printf '\036')"
+
+atag="${tag_marker}003"
 
 declare -A type_tags=([000]=integer
                       [001]=symbol
@@ -153,9 +156,8 @@ defprim() {
 
 cons() {
   local the_car="$1" the_cdr="$2"
-  while [[ -n "${marks[${tag_marker}002${cons_ptr}]}" || -n "${marks[${tag_marker}003${cons_ptr}]}" ]]; do
-    unset marks["${tag_marker}002$((cons_ptr))"]
-    unset marks["${tag_marker}003$((cons_ptr++))"]
+  while [[ -n "${marks[${tag_marker}002${cons_ptr}]}" ]]; do
+    unset marks["${tag_marker}002$((cons_ptr++))"]
   done
   if [[ $cons_ptr == $cons_limit ]]; then
     mark "$the_car"
@@ -171,26 +173,97 @@ cons() {
   cons_ptr="$((cons_ptr + 1))"
 }
 
-vector() {
-  local the_car="$1" the_cdr="$2"
-  while [[ -n "${marks[${tag_marker}002${cons_ptr}]}" || -n "${marks[${tag_marker}003${cons_ptr}]}" ]]; do
-    unset marks["${tag_marker}002$((cons_ptr))"]
-    unset marks["${tag_marker}003$((cons_ptr++))"]
-  done
-  if [[ $cons_ptr == $cons_limit ]]; then
-    mark "$the_car"
-    mark "$the_cdr"
-    gc
-  fi
-  car["${tag_marker}003${cons_ptr}"]="$the_car"
-  cdr["${tag_marker}003${cons_ptr}"]="$the_cdr"
-  r="${tag_marker}003${cons_ptr}"
-  cons_ptr="$((cons_ptr + 1))"
-}
-
 gensym() {
   gensym_counter=$((gensym_counter + 1))
   intern_symbol "G__${gensym_counter}"
+}
+
+new_array() {
+  r="arr$((array_cntr++))"
+  declare -a $r
+  r="${atag}${r}"
+}
+
+vset() {
+  strip_tag "$1"
+  eval "${r}[${2}]=\"${3}\""
+  r="$1"
+}
+
+vget() {
+  strip_tag "$1"
+  eval "r=\${${r}[${2}]}"
+}
+
+count_array() {
+  strip_tag "$1"
+  eval "r=\${#${r}[@]}"
+}
+
+append() {
+  local i
+  strip_tag "$1"
+  eval "i=\${#${r}[@]}"
+  eval "${r}[${i}]=\"${2}\""
+  r="$1"
+}
+
+append_all() {
+  strip_tag "$1"
+  local a1="$r"
+  strip_tag "$2"
+  local a2="$r"
+  local len1 len2
+  eval "len1=\${#${a1}[@]}"
+  eval "len2=\${#${a2}[@]}"
+  local i=0
+  while ((i < len2)); do
+    eval "${a1}[((${i} + ${len1}))]=\"\${${a2}[${i}]}\""
+    ((i++))
+  done
+  r="$1"
+}
+
+prepend() {
+  local i len
+  strip_tag "$2"
+  eval "len=\${#${r}[@]}"
+  while ((len > 0)); do
+    eval "${r}[${len}]=\"\${${r}[((len - 1))]}\""
+    ((len--))
+  done
+  eval "${r}[0]=\"$1\""
+  r="$2"
+}
+
+dup() {
+  new_array
+  local aptr="$r"
+  strip_tag "$aptr"
+  local narr="$r"
+  strip_tag "$1"
+  local len
+  eval "len=\${#${r}[@]}"
+  local i=0
+  while ((i < len)); do
+    eval "${narr}[${i}]=\"\${${r}[${i}]}\""
+    ((i++))
+  done
+  r="$aptr"
+}
+
+concat() {
+  dup "$1"
+  append_all "$r" "$2"
+}
+
+vector() {
+  local v="$2"
+  if [[ "$EMPTY" == "$v" || -z "$v" || "$NIL" == "$v" ]]; then 
+    new_array
+    v="$r"
+  fi
+  prepend $1 $v
 }
 
 protect() {
@@ -202,7 +275,7 @@ unprotect() { protected_ptr="$((protected_ptr - 1))"; }
 
 mark() {
   local object="$1"
-  while ( typeP "$object" cons || typeP "$object" vector ) && [[ -z "${marks[$object]}" ]]; do
+  while typeP "$object" cons && [[ -z "${marks[$object]}" ]]; do
     marks["$object"]=1
     mark "${car[$object]}"
     object="${cdr[$object]}"
@@ -216,9 +289,8 @@ gc() {
   for k in "${!stack[@]}";           do mark "${stack[$k]}";           done
   for k in "${!global_bindings[@]}"; do mark "${global_bindings[$k]}"; done
   cons_ptr=0
-  while [[ -n "${marks[${tag_marker}002${cons_ptr}]}" || -n "${marks[${tag_marker}003${cons_ptr}]}" ]]; do
-    unset marks["${tag_marker}002$((cons_ptr))"]
-    unset marks["${tag_marker}003$((cons_ptr++))"]
+  while [[ -n "${marks[${tag_marker}002${cons_ptr}]}" ]]; do
+    unset marks["${tag_marker}002$((cons_ptr++))"]
   done
   if [[ $cons_ptr == $cons_limit ]]; then
     echo "expanding heap..." >&2
@@ -271,9 +343,7 @@ skip_comment() {
   while [[ "$r" != "$pb_newline" ]]; do getc; done
 }
 
-read_sequence() {
-  local end="$1"
-  local construct="$2"
+read_list() {
   local ch read1 read2
   if lisp_read; then
     read1="$r"
@@ -289,23 +359,36 @@ read_sequence() {
       lisp_read && read2="$r"
       skip_blanks
       getc
-      $construct "$read1" "$read2"
+      cons "$read1" "$read2"
       ;;
-    "$end") $construct "$read1" $NIL ;;
+    ")") cons "$read1" $NIL ;;
     *)
       ungetc
       skip_blanks
-      read_sequence "$end" "$construct"
-      $construct "$read1" "$r"
+      read_list
+      cons "$read1" "$r"
   esac
 }
 
-read_list() {
-  read_sequence ')' "cons"
-}
-
 read_vector() {
-  read_sequence ']' "vector"
+  local ch read1
+  if lisp_read; then
+    read1="$r"
+  else
+    getc
+    r="$EMPTY"
+    return
+  fi
+  skip_blanks
+  getc
+  if [[ "$r" == "]" ]]; then
+    vector "$read1" "$EMPTY"
+  else
+    ungetc
+    skip_blanks
+    read_vector
+    vector "$read1" "$r"
+  fi
 }
 
 read_string() {
@@ -374,28 +457,43 @@ escape_str() {
   done
 }
 
+str_arr() {
+  local ret="["
+  count_array "$1"
+  local len=$r
+  if (( 0 != len )); then
+    vget $1 0
+    str "$r"
+    ret="${ret}${r}"
+    for ((i=1 ; i < $len ; i++)); do
+      vget $1 $i
+      str "$r"
+      ret="${ret} ${r}"
+    done
+  fi
+  r="${ret}]"
+}
+
 str_list() {
   local lst="$1"
   local ret
   if [[ "${car[$lst]}" == $FN ]]; then
     strip_tag "$lst" && printf -v r '#<function:%s>' "$r"
   else
-    ret="$3"
+    ret="("
     str "${car[$lst]}"
     ret="${ret}${r}"
     lst="${cdr[$lst]}"
-    while typeP "$lst" "$2" ; do
-      ret="${ret} "
+    while typeP "$lst" cons ; do
       str "${car[$lst]}"
-      ret="${ret}${r}"
+      ret="${ret} ${r}"
       lst="${cdr[$lst]}"
     done
     if [[ "$lst" != $NIL ]]; then
-      ret="${ret} . "
       str "$lst"
-      ret="${ret}${r}"
+      ret="${ret} . ${r}"
     fi
-    r="${ret}$4"
+    r="${ret})"
   fi
 }
 
@@ -403,8 +501,8 @@ str() {
   type "$1"
   case "$r" in
     integer) strip_tag "$1" && printf -v r '%d' "$r" ;;
-    cons) str_list "$1" "cons" '(' ')' ;;
-    vector) str_list "$1" "vector" '[' ']' ;;
+    cons) str_list "$1" ;;
+    vector) str_arr "$1" ;;
     symbol) strip_tag "$1" && printf -v r '%s' "$(echo "${symbols[$r]}" | tr $pb_star "*")" ;;
     keyword) strip_tag "$1" && printf -v r ':%s' "$r" ;;
     *)
@@ -439,6 +537,8 @@ global_bindings[$NIL]="$NIL"
 global_bindings[$T]="$T"
 car[$NIL]="$NIL"
 cdr[$NIL]="$NIL"
+
+new_array && EMPTY="$r"
 
 current_env="$NIL"
 
@@ -499,20 +599,44 @@ defprim 'str'       && STR=$r
 
 eval_args() {
   local args="$1"
-  while [[ "$args" != $NIL ]]; do
-    lisp_eval "${car[$args]}"
-    stack[$((stack_ptr++))]="$r"
-    args="${cdr[$args]}"
-  done
+  type "$args"
+  if [[ "$r" == cons ]]; then
+    while [[ "$args" != $NIL ]]; do
+      lisp_eval "${car[$args]}"
+      stack[$((stack_ptr++))]="$r"
+      args="${cdr[$args]}"
+    done
+  elif [[ "$r" == vector ]]; then
+    count_array "$args"
+    local i len="$r"
+    for ((i=0; i<len; i++)); do
+      vget "$args" "$i"
+      lisp_eval "$r"
+      stack[$((stack_ptr++))]="$r"
+    done
+  else
+    str "$args"
+    error "Unknown argument type: $r"
+  fi
 }
 
 listify_args() {
-  local construct="$1"
   local p=$((stack_ptr - 1)) ret=$NIL stop
-  [[ -z "$2" ]] && stop=$frame_ptr || stop="$2"
+  [[ -z "$1" ]] && stop=$frame_ptr || stop="$1"
   while ((stop <= p)); do
-    $construct "${stack[$p]}" "$ret" && ret="$r"
+    cons "${stack[$p]}" "$ret" && ret="$r"
     p=$((p - 1))
+  done
+  r="$ret"
+}
+
+vectify_args() {
+  local stop=$((stack_ptr - 1)) ret
+  new_array
+  ret="$r"
+  [[ -z "$1" ]] && p=$frame_ptr || p="$1"
+  while ((p <= stop)); do
+    append "$ret" "${stack[$((p++))]}"
   done
   r="$ret"
 }
@@ -561,15 +685,36 @@ apply_user() {
 
   [[ -z "${environments[$fn]}" ]] && local env=$NIL || local env="${environments[$fn]}"
 
-  while [[ "$params" != $NIL && "${car[$params]}" != $AMP ]]; do
-    acons "${car[$params]}" "${stack[$((p++))]}" "$env" && env="$r"
-    params="${cdr[$params]}"
-  done
-
-  if [[ "${car[$params]}" == $AMP ]]; then
-    listify_args "cons" "$p" && local more="$r"
-    acons "${car[${cdr[$params]}]}" "$more" "$env" && env="$r"
+  type "$params"
+  local ptype="$r"
+  if [[ "$ptype" == "cons" ]]; then
+    while [[ "$params" != $NIL && "${car[$params]}" != $AMP ]]; do
+      acons "${car[$params]}" "${stack[$((p++))]}" "$env" && env="$r"
+      params="${cdr[$params]}"
+    done
+    if [[ "${car[$params]}" == $AMP ]]; then
+      listify_args "$p" && local more="$r"
+      acons "${car[${cdr[$params]}]}" "$more" "$env" && env="$r"
+    fi
+  elif [[ "$ptype" == "vector" ]]; then
+    local i=1 len
+    count_array "$params"
+    len="$r"
+    vget $params 0
+    while ((i <= len)) && [[ "$r" != $AMP ]]; do
+      acons "$r" "${stack[$((p++))]}" "$env" && env="$r"
+      vget $params $((i++))
+    done
+    if [[ "$r" == "$AMP" ]]; then
+      listify_args "$p" && local more="$r"
+      vget $params $i
+      acons "$r" "$more" "$env" && env="$r"
+    fi
+  else
+    error "Illegal type (${ptype}) for params in function"
+    return 1
   fi
+
 
   analyze "$fn" "$body" "$env"
 
@@ -621,8 +766,8 @@ apply_primitive() {
     $CAR)        r="${car[$arg0]}"                  ;;
     $CDR)        r="${cdr[$arg0]}"                  ;;
     $CONS)       cons "$arg0" "$arg1"               ;;
-    $LIST)       listify_args "cons"                ;;
-    $VECTOR)     listify_args "vector"              ;;
+    $LIST)       listify_args                       ;;
+    $VECTOR)     vectify_args                       ;;
     $KEYWORD)
       type "$arg0"
       case $r in
@@ -635,7 +780,7 @@ apply_primitive() {
       esac
       ;;
     $STR)
-      listify_args "cons" && strs="$r"
+      listify_args && strs="$r"
       local ret=""
       while [[ "$strs" != "$NIL" ]]; do
         str "${car[$strs]}"
@@ -691,13 +836,28 @@ apply_primitive() {
     $APPLY)
       local old_frame_ptr=$frame_ptr
       frame_ptr=$stack_ptr
-      while typeP "$arg1" cons; do
-        stack[$stack_ptr]="${car[$arg1]}"
-        stack_ptr="$((stack_ptr+1))"
-        arg1="${cdr[$arg1]}"
-      done
-      [[ $arg1 != $NIL ]] && error "Bad argument to apply: not a proper list"
-      apply "$arg0"
+      type "$arg1"
+      case $r in
+        cons)
+          while typeP "$arg1" cons; do
+            stack[$((stack_ptr++))]="${car[$arg1]}"
+            arg1="${cdr[$arg1]}"
+          done
+          [[ $arg1 != $NIL ]] && error "Bad argument to apply: not a proper list"
+          ;;
+        vector)
+          count_array "$arg1"
+          local len="$r"
+          for ((i=0; i<len; i++)); do
+            vget "$arg1" "$i"
+            stack[$((stack_ptr++))]="$r"
+          done
+          ;;
+        *) error "Bad argument to apply: not a list"
+      esac
+      if [[ -z "$e" ]]; then
+        apply "$arg0"
+      fi
       stack_ptr=$frame_ptr
       frame_ptr=$old_frame_ptr
       ;;
@@ -739,7 +899,7 @@ apply_primitive() {
       fi
       ;;
     $PRINTLN)
-      listify_args "cons" && local to_print="$r"
+      listify_args && local to_print="$r"
       while [[ "$to_print" != "$NIL" ]]; do
         type "${car[$to_print]}"
         case "$r" in
@@ -796,16 +956,36 @@ apply() {
 }
 
 add_bindings() {
-  local pairs="$1" val
-  while [[ "$pairs" != $NIL && "${cdr[$pairs]}" != $NIL ]]; do
-    lisp_eval "${car[${cdr[$pairs]}]}" && val="$r"
-    if [[ -n "$e" ]]; then return 1; fi
-    acons "${car[$pairs]}" "$val" "$current_env" && current_env="$r"
-    pairs="${cdr[${cdr[$pairs]}]}"
-  done
-  if [[ "$pairs" != $NIL ]]; then
-    error "Bad 'let' bindings. Must be an even number of binding forms."
-    return 1
+  type "$1"
+  if [[ $r == cons ]]; then
+    local pairs="$1" val
+    while [[ "$pairs" != $NIL && "${cdr[$pairs]}" != $NIL ]]; do
+      lisp_eval "${car[${cdr[$pairs]}]}" && val="$r"
+      if [[ -n "$e" ]]; then return 1; fi
+      acons "${car[$pairs]}" "$val" "$current_env" && current_env="$r"
+      pairs="${cdr[${cdr[$pairs]}]}"
+    done
+    if [[ "$pairs" != $NIL ]]; then
+      error "Bad 'let' bindings. Must be an even number of binding forms."
+      return 1
+    fi
+  elif [[ "$r" == vector ]]; then
+    count_array "$1"
+    local i v len="$r"
+    if (( len % 2 == 0 )); then
+      for (( i=0; i<len; )); do
+        vget "$1" $((i++))
+        v="$r"
+        vget "$1" $((i++))
+        lisp_eval "$r"
+        if [[ -n "$e" ]]; then return 1; fi
+        acons "$v" "$r" "$current_env" && current_env="$r"
+      done
+    else
+      error "Bad 'let' bindings. Must be an even number of binding forms."
+    fi
+  else
+    error "'let' bindings not available."
   fi
 }
 
@@ -914,7 +1094,7 @@ lisp_eval() {
       frame_ptr=$stack_ptr
       eval_args "$1"
       if [[ -z "$e" ]]; then
-        listify_args "vector"
+        vectify_args
       fi
       stack_ptr=$old_stack_ptr
       frame_ptr=$old_frame_ptr
