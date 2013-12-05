@@ -39,15 +39,12 @@ pb_unget="^$"
 history_flag=1
 
 readline() {
-  IFS=$'\n\b'
-  local prompt="> "
-  local line
-  read -e -p "$prompt" line || exit 0
-  for ch in $(echo "^${line}" | grep -o . | tail -n +2 | tr "*" "$pb_star"); do
-    pb_get="${pb_get:0:$((${#pb_get}-1))}${ch}$"
-  done
-  pb_get="${pb_get:0:$((${#pb_get}-1))}${pb_newline}$"
-  IFS="$DEFAULT_IFS"
+  local IFS=$'\n\b' prompt="> " line
+  set -f
+  read -e -r -p "$prompt" line || exit 0
+  pb_get="${pb_get:0:$((${#pb_get}-1))}${line}${pb_newline}$"
+  set +f
+  unset IFS
   if [[ "$line" =~ ^[[:space:]]*- ]]; then
     echo "warning: lines starting with - aren't stored in history" >&2
   elif [[ -n "$history_flag" ]]; then
