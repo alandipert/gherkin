@@ -762,7 +762,7 @@ apply_primitive() {
       ;;
     $SH_BANG)
       eval "${arg0}"
-      r="$NIL"
+      [[ $? == 0 ]] && r=$T || r=$NIL
       ;;
     $LOAD_FILE)
       local f
