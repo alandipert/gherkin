@@ -491,6 +491,7 @@ defprim 'exit'      && EXIT=$r
 defprim 'println'   && PRINTLN=$r
 defprim 'sh'        && SH=$r
 defprim 'sh!'       && SH_BANG=$r
+defprim 'exec'      && EXEC=$r
 defprim 'load-file' && LOAD_FILE=$r
 defprim 'gc'        && GC=$r
 defprim 'error'     && ERROR=$r
@@ -763,6 +764,9 @@ apply_primitive() {
     $SH_BANG)
       eval "${arg0}"
       r="$NIL"
+      ;;
+    $EXEC)
+      exec "${arg0}"
       ;;
     $LOAD_FILE)
       local f
