@@ -315,7 +315,7 @@ read_string() {
     s="${s}${r}"
     getc
   done
-  r="$s"
+  r="$(echo "$s" | tr "$pb_star" '*')"
 }
 
 lisp_read() {
