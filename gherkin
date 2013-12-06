@@ -446,7 +446,6 @@ intern_symbol 'set!'    && SET_BANG=$r
 intern_symbol 'def'     && DEF=$r
 intern_symbol 'do'      && DO=$r
 intern_symbol 'recur'   && RECUR=$r
-intern_symbol 'let'     && LET=$r
 intern_symbol 'binding' && BINDING=$r
 
 declare -A specials
@@ -458,7 +457,6 @@ specials[$SET_BANG]=1
 specials[$DEF]=1
 specials[$DO]=1
 specials[$RECUR]=1
-specials[$LET]=1
 specials[$BINDING]=1
 
 defprim 'eq?'       && EQ=$r
