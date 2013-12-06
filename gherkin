@@ -496,6 +496,7 @@ defprim 'gc'        && GC=$r
 defprim 'error'     && ERROR=$r
 defprim 'type'      && TYPE=$r
 defprim 'str'       && STR=$r
+defprim 'split'     && SPLIT=$r
 
 eval_args() {
   local args="$1"
@@ -608,6 +609,14 @@ check_numbers() {
   done
 }
 
+rev_str() {
+  local i rev=""
+  for ((i=0; i < ${#1}; i++)); do
+    rev="${1:$i:1}${rev}"
+  done
+  r="$rev"
+}
+
 apply_primitive() {
   local primitive="$1"
   local arg0="${stack[$frame_ptr]}"
@@ -642,6 +651,22 @@ apply_primitive() {
         ret="${ret}$r"
         strs="${cdr[$strs]}"
       done
+      r="$ret"
+      ;;
+    $SPLIT)
+      local i ret="$NIL" last=0
+      rev_str "$arg1" && local rev="$r"
+      for ((i=0; i < ${#rev}; i++)); do
+        if [[ "${rev:$i:1}" == "$arg0" ]]; then
+          rev_str "${rev:$last:$((i - last))}"
+          cons "$r" "$ret" && ret="$r"
+          last="$((i + 1))"
+        fi
+      done
+      if ((last != 0)); then
+        rev_str "${rev:$last:$((${#rev} - last))}"
+        cons "$r" "$ret" && ret="$r"
+      fi
       r="$ret"
       ;;
     $EVAL)       lisp_eval "$arg0"    ;;
