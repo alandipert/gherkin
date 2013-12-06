@@ -99,7 +99,7 @@ declare -A global_bindings
 declare -a symbols
 declare -a protected
 
-heap_increment=30000
+heap_increment=100
 cons_limit=$heap_increment
 symbol_limit=$heap_increment
 
@@ -197,18 +197,35 @@ protect() {
 
 unprotect() { protected_ptr="$((protected_ptr - 1))"; }
 
-mark() {
+acc_count=0
+
+mark_list() {
   local object="$1"
   while ( typeP "$object" cons || typeP "$object" vector ) && [[ -z "${marks[$object]}" ]]; do
     marks["$object"]=1
-    mark "${car[$object]}"
+    mark_acc[$((acc_count++))]="${car[$object]}"
     object="${cdr[$object]}"
   done
+}
+
+mark() {
+  declare -a mark_acc
+  acc_count=0
+  mark_list "$1"
+  local i
+  for ((i=0; i<${#mark_acc[@]}; i++)); do
+    if ( typeP "${mark_acc[$i]}" cons || typeP "${mark_acc[$i]}" vector ); then
+      mark_list "${mark_acc[$i]}"
+    fi
+  done
+  unset mark_acc
 }
 
 gc() {
   echo "GC..." >&2
   IFS="$DEFAULT_IFS"
+  mark "$current_env"
+  for k in "${!environments[@]}";    do mark "${environments[$k]}";    done
   for k in "${!protected[@]}";       do mark "${protected[$k]}";       done
   for k in "${!stack[@]}";           do mark "${stack[$k]}";           done
   for k in "${!global_bindings[@]}"; do mark "${global_bindings[$k]}"; done
