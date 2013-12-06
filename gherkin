@@ -496,6 +496,7 @@ defprim 'error'     && ERROR=$r
 defprim 'type'      && TYPE=$r
 defprim 'str'       && STR=$r
 defprim 'split'     && SPLIT=$r
+defprim 'getenv'    && GETENV=$r
 
 eval_args() {
   local args="$1"
@@ -667,6 +668,10 @@ apply_primitive() {
         cons "$r" "$ret" && ret="$r"
       fi
       r="$ret"
+      ;;
+    $GETENV)
+      eval "r=\$${arg0}"
+      [[ -z "$r" ]] && r=$NIL
       ;;
     $EVAL)       lisp_eval "$arg0"    ;;
     $READ)       lisp_read            ;;
