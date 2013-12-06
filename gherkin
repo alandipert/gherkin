@@ -668,7 +668,7 @@ apply_primitive() {
       r="$ret"
       ;;
     $GETENV)
-      eval "r=\$${arg0}"
+      [[ -n "$arg0" ]] && eval "r=\$${arg0}"
       [[ -z "$r" ]] && r=$NIL
       ;;
     $EVAL)       lisp_eval "$arg0"    ;;
