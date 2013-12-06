@@ -88,7 +88,7 @@ strmap_file() {
   else
     contents="$(cat "$f" | sed -e 's/^[ \t]*//' | tr -s '\n' $pb_newline)"
   fi
-  mapped_file="(do $contents)"
+  mapped_file="(do $contents nil)"
   mapped_file_ptr=0
 }
 
