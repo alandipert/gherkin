@@ -39,15 +39,12 @@ pb_unget="^$"
 history_flag=1
 
 readline() {
-  IFS=$'\n\b'
-  local prompt="> "
-  local line
-  read -e -p "$prompt" line || exit 0
-  for ch in $(echo "^${line}" | grep -o . | tail -n +2 | tr "*" "$pb_star"); do
-    pb_get="${pb_get:0:$((${#pb_get}-1))}${ch}$"
-  done
-  pb_get="${pb_get:0:$((${#pb_get}-1))}${pb_newline}$"
-  IFS="$DEFAULT_IFS"
+  local IFS=$'\n\b' prompt="> " line
+  set -f
+  read -e -r -p "$prompt" line || exit 0
+  pb_get="${pb_get:0:$((${#pb_get}-1))}${line}${pb_newline}$"
+  set +f
+  unset IFS
   if [[ "$line" =~ ^[[:space:]]*- ]]; then
     echo "warning: lines starting with - aren't stored in history" >&2
   elif [[ -n "$history_flag" ]]; then
@@ -450,6 +447,7 @@ intern_symbol 'def'     && DEF=$r
 intern_symbol 'do'      && DO=$r
 intern_symbol 'recur'   && RECUR=$r
 intern_symbol 'let'     && LET=$r
+intern_symbol 'binding' && BINDING=$r
 
 declare -A specials
 
@@ -461,6 +459,7 @@ specials[$DEF]=1
 specials[$DO]=1
 specials[$RECUR]=1
 specials[$LET]=1
+specials[$BINDING]=1
 
 defprim 'eq?'       && EQ=$r
 defprim 'nil?'      && NILP=$r
@@ -829,7 +828,7 @@ add_bindings() {
     pairs="${cdr[${cdr[$pairs]}]}"
   done
   if [[ "$pairs" != $NIL ]]; then
-    error "Bad 'let' bindings. Must be an even number of binding forms."
+    error "Bad bindings. Must be an even number of binding forms."
     return 1
   fi
 }
@@ -880,12 +879,12 @@ eval_special() {
       lisp_eval "$arg1" && global_bindings["$arg0"]=$r
       r="$arg0"
       ;;
-    $LET)
-      local let_body="${cdr[$args]}"
+    $BINDING)
+      local binding_body="${cdr[$args]}"
       local old_env="$current_env"
       add_bindings $arg0
       if [[ -z "$e" ]]; then
-        do_ $let_body
+        do_ $binding_body
       fi
       current_env="$old_env"
       ;;
