@@ -79,6 +79,30 @@ ungetc() {
   fi
 }
 
+has_shebangP() { [[ "$(head -1 $1)" =~ ^#! ]]; }
+
+strmap_file() {
+  local f="$1" contents
+  if has_shebangP "$f"; then
+    contents="$(tail -n+2 "$f" | sed -e 's/^[ \t]*//' | tr -s '\n' $pb_newline)"
+  else
+    contents="$(cat "$f" | sed -e 's/^[ \t]*//' | tr -s '\n' $pb_newline)"
+  fi
+  mapped_file="(do $contents)"
+  mapped_file_ptr=0
+}
+
+strmap_getc() {
+  r="${mapped_file:$((mapped_file_ptr++)):1}"
+}
+
+strmap_ungetc() {
+  let --mapped_file_ptr
+}
+
+_getc=getc
+_ungetc=ungetc
+
 # memory layout & gc ###########################################################
 
 cons_ptr=0
@@ -237,9 +261,9 @@ interpret_token() {
 
 read_token() {
   local token=""
-  while getc; do
+  while $_getc; do
     if [[ "$r" =~ ('('|')'|'['|']'|[[:space:]]|$pb_newline|,) ]]; then
-      ungetc && break
+      $_ungetc && break
     else
       token="${token}${r}"
     fi
@@ -258,14 +282,14 @@ read_token() {
 }
 
 skip_blanks() {
-  getc
-  while [[ "$r" =~ ([[:space:]]|$pb_newline|,) ]]; do getc; done
-  ungetc
+  $_getc
+  while [[ "$r" =~ ([[:space:]]|$pb_newline|,) ]]; do $_getc; done
+  $_ungetc
 }
 
 skip_comment() {
-  getc
-  while [[ "$r" != "$pb_newline" ]]; do getc; done
+  $_getc
+  while [[ "$r" != "$pb_newline" ]]; do $_getc; done
 }
 
 read_sequence() {
@@ -275,23 +299,21 @@ read_sequence() {
   if lisp_read; then
     read1="$r"
   else
-    getc
+    $_getc
     r="$NIL"
     return
   fi
-  skip_blanks
-  getc && ch="$r"
+  $_getc && ch="$r"
   case "$ch" in
     ".")
       lisp_read && read2="$r"
       skip_blanks
-      getc
+      $_getc
       $construct "$read1" "$read2"
       ;;
     "$end") $construct "$read1" $NIL ;;
     *)
-      ungetc
-      skip_blanks
+      $_ungetc
       read_sequence "$end" "$construct"
       $construct "$read1" "$r"
   esac
@@ -307,17 +329,17 @@ read_vector() {
 
 read_string() {
   local s=""
-  getc
+  $_getc
   while [[ "$r" != "\"" ]]; do
     s="${s}${r}"
-    getc
+    $_getc
   done
   r="$(echo "$s" | tr "$pb_star" '*')"
 }
 
 lisp_read() {
   local ch read1 read2 read3 read4
-  skip_blanks; getc; ch="$r"
+  skip_blanks; $_getc; ch="$r"
   case "$ch" in
     "\"")
       read_string
@@ -338,7 +360,7 @@ lisp_read() {
       lisp_read
       ;;
     *)
-      ungetc
+      $_ungetc
       read_token
   esac
 }
@@ -579,18 +601,13 @@ apply_user() {
   r="$ret"
 }
 
-has_shebangP() { [[ "$(head -1 $1)" =~ ^#! ]]; }
-
 eval_file() {
-  local f="$1" contents
-  if has_shebangP "$f"; then
-    contents="$(tail -n+2 "$f")"
-  else
-    contents="$(cat "$f")"
-  fi
-  history_flag=
-  lisp_read <<<"(do $contents)"
-  history_flag=1
+  strmap_file "$1"
+  _getc=strmap_getc
+  _ungetc=strmap_ungetc
+  lisp_read
+  _getc=getc
+  _ungetc=ungetc
   protect "$r"
   lisp_eval "$r"
   unprotect
