@@ -298,13 +298,12 @@ acc_count=0
 
 mark_seq() {
   local object="$1"
-  if typeP "$object" cons ; then
-    while typeP "$object" cons && [[ -z "${marks[$object]}" ]]; do
-      marks["$object"]=1
-      mark_acc[acc_count++]="${car[$object]}"
-      object="${cdr[$object]}"
-    done
-  elif typeP "$object" vector ; then
+  while typeP "$object" cons && [[ -z "${marks[$object]}" ]]; do
+    marks["$object"]=1
+    mark_acc[acc_count++]="${car[$object]}"
+    object="${cdr[$object]}"
+  done
+  if typeP "$object" vector ; then
     count_array "$object"
     local i sz="$r"
     for ((i=0; i<sz; i++)); do
