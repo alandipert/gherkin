@@ -177,12 +177,12 @@ defprim() {
 
 cons() {
   local the_car="$1" the_cdr="$2"
+  mark "$the_car"
+  mark "$the_cdr"
   while [[ -n "${marks[${tag_marker}002${cons_ptr}]}" ]]; do
     unset marks["${tag_marker}002$((cons_ptr++))"]
   done
   if [[ $cons_ptr == $cons_limit ]]; then
-    mark "$the_car"
-    mark "$the_cdr"
     gc
   fi
   unset environments["${tag_marker}002${cons_ptr}"]
