@@ -40,7 +40,10 @@ You may also load the core library and start a REPL with `./gherkin -l core.gk -
 
 ## Learning more & getting involved
 
-gherkin is brand new, under active development, and not yet formally released.  As such, its usage is error-prone and its documentation spotty.  If you'd like to help us improve gherkin, its documentation, or have any questions, please join us in `#gherkin` on `irc.freenode.net`.
+gherkin is brand new, under active development, and not yet formally released.  As such, its usage is error-prone and its documentation spotty.  If you'd like to help us improve gherkin, its documentation, or have any questions, please join us: 
+
+* In`#gherkin` on `irc.freenode.net`.
+* On the [gherkin-dev@googlegroups.com mailing list](https://groups.google.com/d/forum/gherkin-dev).
 
 ## Related tools
 
