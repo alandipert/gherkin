@@ -658,7 +658,7 @@ eval_args() {
       lisp_eval "$r"
       stack[$((stack_ptr++))]="$r"
     done
-  else
+  elif [[ "$1" != "$NIL" ]]; then
     str "$args"
     error "Unknown argument type: $r"
   fi
@@ -754,7 +754,7 @@ apply_user() {
       vget $params $i
       acons "$r" "$more" "$env" && env="$r"
     fi
-  else
+  elif [[ "$params" != $NIL ]]; then
     error "Illegal type (${ptype}) for params in function"
     return 1
   fi
