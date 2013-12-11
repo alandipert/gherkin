@@ -725,17 +725,19 @@ analyze() {
   done
 }
 
-reverse_list() {
-  local lst="$1" rev=$NIL
+copy_list() {
+  local lst="$1" copy="$NIL" prev="$NIL" curr="$NIL"
   while [[ "$lst" != "$NIL" ]]; do
-    cons "${car[$lst]}" "$rev" && rev="$r"
+    cons "${car[$lst]}" "$NIL" && curr="$r"
+    if [[ "$copy" == "$NIL" ]]; then
+      copy="$curr"
+    else
+      cdr["$prev"]="$curr"
+    fi
+    prev="$curr"
     lst="${cdr[$lst]}"
   done
-  r="$rev"
-}
-
-copy_list() {
-  reverse_list "$1" && reverse_list "$r"
+  r="$copy"
 }
 
 apply_user() {
