@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/home/alan/.local/bin/bash
 # -*- mode: sh; sh-basic-offset: 2 -*-
 
 usage() {
@@ -439,7 +439,11 @@ read_string() {
     $_getc
     if [[ "$r" == "\\" ]]; then
       $_getc
-      s="${s}${r}"
+      if [[ "$r" == "\"" ]]; then
+	s="${s}${r}"
+      else
+	s="${s}\\${r}"
+      fi
     elif [[ "$r" == "\"" ]]; then
       break
     else
@@ -1001,7 +1005,7 @@ apply_primitive() {
       ;;
     $SH)
       local ret
-      ret="$($arg0)"
+      eval "ret=\$(${arg0})"
       IFS=$'\n'
       string_list $(for i in $ret; do echo "$i"; done)
       IFS="$DEFAULT_IFS"
