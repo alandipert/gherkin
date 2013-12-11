@@ -719,6 +719,19 @@ analyze() {
   done
 }
 
+reverse_list() {
+  local lst="$1" rev=$NIL
+  while [[ "$lst" != "$NIL" ]]; do
+    cons "${car[$lst]}" "$rev" && rev="$r"
+    lst="${cdr[$lst]}"
+  done
+  r="$rev"
+}
+
+copy_list() {
+  reverse_list "$1" && reverse_list "$r"
+}
+
 apply_user() {
   local fn="$1"
   local body="${cdr[${cdr[$fn]}]}"
@@ -1062,7 +1075,12 @@ do_() {
     lisp_eval "${car[$body]}" && result="$r"
     body="${cdr[$body]}"
   done
-  r="$result"
+  if typeP "$result" cons && [[ "${car[$result]}" == "$FN" ]]; then
+    copy_list "$result"
+    environments["$r"]="$current_env"
+  else
+    r="$result"
+  fi
 }
 
 eval_special() {
