@@ -435,10 +435,16 @@ read_vector() {
 
 read_string() {
   local s=""
-  $_getc
-  while [[ "$r" != "\"" ]]; do
-    s="${s}${r}"
+  while true; do
     $_getc
+    if [[ "$r" == "\\" ]]; then
+      $_getc
+      s="${s}${r}"
+    elif [[ "$r" == "\"" ]]; then
+      break
+    else
+      s="${s}${r}"
+    fi
   done
   r="$(echo "$s" | tr "$pb_star" '*')"
 }
