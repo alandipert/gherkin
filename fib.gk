@@ -1,10 +1,9 @@
-#!./gherkin -l
+#!./gherkin
 (def concat
   (fn (lst & more)
     (if lst
       (cons (car lst) (apply concat (cons (cdr lst) more)))
-      (if more
-        (apply concat more)))))
+      (if more (apply concat more)))))
 
 (def partial
   (fn (f & args)
@@ -19,4 +18,4 @@
 
 (def fib (partial fib* 0 1))
  
-(fib 60)
+(println (fib 60))
