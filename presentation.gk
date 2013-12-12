@@ -7,15 +7,15 @@
 
 (def bold
   (fn (s)
-    (str "\\033[1m" s "\\033[0m")))
+    (str "\033[1m" s "\033[0m")))
 
 (def blue
   (fn (s)
-    (str "\\033\[1;34m" s "\\033[0m")))
+    (str "\033[1;34m" s "\033[0m")))
 
 (def title
   (fn (s)
-    (bold (blue (str s "\\n\\n")))))
+    (bold (blue (str s "\n\n")))))
 
 (def conj-slides
   (list
@@ -86,7 +86,7 @@
     (if slides
       (do
         (sh! "clear")
-        (apply println (map (fn (line) (str "\\t" line)) (car slides)))
+        (apply println (map (fn (line) (str "\t" line)) (car slides)))
         (read)
         (recur (cdr slides))))))
 
