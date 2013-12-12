@@ -11,8 +11,8 @@ usage() {
   exit 2
 }
 
-if [[ "${BASH_VERSINFO[0]}" != 4 ]]; then
-  echo "bash >= 4.0.0 required" >&2
+if [[ -z "$BASH_VERSION" ]] || ((${BASH_VERSINFO[0]} < 4)); then
+  echo "bash >= 4.0 required" >&2
   exit 1
 fi
 
@@ -123,6 +123,7 @@ declare -A global_bindings
 
 declare -a symbols
 declare -a protected
+declare -a mark_acc
 
 heap_increment=1500
 cons_limit=$heap_increment
@@ -314,14 +315,13 @@ mark_seq() {
 }
 
 mark() {
-  declare -g -a mark_acc
   acc_count=0
   mark_seq "$1"
   local i
   for ((i=0; i<${#mark_acc[@]}; i++)); do
     mark_seq "${mark_acc[$i]}"
   done
-  unset mark_acc
+  mark_acc=()
 }
 
 gc() {
