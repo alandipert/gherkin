@@ -84,9 +84,9 @@ has_shebangP() { [[ "$(head -1 $1)" =~ ^#! ]]; }
 strmap_file() {
   local f="$1" contents
   if has_shebangP "$f"; then
-    contents="$(tail -n+2 "$f" | sed -e 's/^[ \t]*//' | tr -s '\n' $pb_newline)"
+    contents="$(tail -n+2 "$f" | sed -e 's/^[[:space:]]*//' | tr -s '\n' $pb_newline)"
   else
-    contents="$(cat "$f" | sed -e 's/^[ \t]*//' | tr -s '\n' $pb_newline)"
+    contents="$(cat "$f" | sed -e 's/^[[:space:]]*//' | tr -s '\n' $pb_newline)"
   fi
   mapped_file="(do $contents nil)"
   mapped_file_ptr=0
