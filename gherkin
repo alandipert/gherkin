@@ -439,12 +439,12 @@ read_string() {
     $_getc
     if [[ "$r" == "\\" ]]; then
       $_getc
-      if [[ "$r" == "\"" ]]; then
+      if [[ "$r" == '"' ]]; then
 	s="${s}${r}"
       else
 	s="${s}\\${r}"
       fi
-    elif [[ "$r" == "\"" ]]; then
+    elif [[ "$r" == '"' ]]; then
       break
     else
       s="${s}${r}"
