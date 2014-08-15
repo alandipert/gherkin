@@ -360,7 +360,7 @@ read_token() {
     if [[ "$r" =~ ('('|')'|'['|']'|[[:space:]]|$pb_newline|,) ]]; then
       $_ungetc && break
     else
-      token="${token}${r}"
+      token="${token}${r/\*/${pb_star}}"
     fi
   done
   [ -z "$token" ] && return 1
