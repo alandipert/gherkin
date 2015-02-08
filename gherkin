@@ -831,7 +831,9 @@ apply_primitive() {
   fp=0
   for x in "${stack[@]}"
   do
-    local arg[$fp]=${stack[$((frame_ptr+fp))]}
+    arg_ptr=$((frame_ptr+fp))
+    [[ $arg_ptr -ge $stack_ptr ]] && break
+    local arg[$fp]=${stack[$arg_ptr]}
     fp=$(($fp + 1))
   done 	 
 
