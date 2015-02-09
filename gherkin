@@ -945,7 +945,7 @@ apply_primitive() {
         cons)
           while typeP "${arg[1]}" cons; do
             stack[$((stack_ptr++))]="${car[${arg[1]}]}"
-            arg1="${cdr[${arg[1]}]}"
+            arg[1]="${cdr[${arg[1]}]}"
           done
           [[ ${arg[1]} != $NIL ]] && error "Bad argument to apply: not a proper list"
           ;;
