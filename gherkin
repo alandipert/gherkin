@@ -1252,6 +1252,7 @@ eval_string() {
 # Start REPL if no arguments
 [ -z "$*" ] && repl
 
+ARGV="$*"
 # Process parameters
 while [ "$*" ]; do
   param=$1; shift; OPTARG=$1
