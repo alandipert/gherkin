@@ -79,7 +79,7 @@ ungetc() {
   fi
 }
 
-has_shebangP() { [[ "$(head -1 $1)" =~ ^#! ]]; }
+has_shebangP() { [[ "$(head -1 $1)" =~ ^#! && "$(head -1 $1)" =~ gherkin ]]; }
 
 strmap_file() {
   local f="$1" contents
@@ -1265,7 +1265,7 @@ while [ "$*" ]; do
     -t|--test) ;;
     -r|--repl) repl ;;
     -*) usage ;;
-    *)         eval_file "$param"
+    *)         [[ -f "$param" ]] && has_shebangP "$param" && eval_file "$param"
                [[ $r != $NIL ]] && prn $r
                ;;
   esac
