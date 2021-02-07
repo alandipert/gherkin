@@ -827,26 +827,32 @@ rev_str() {
 
 apply_primitive() {
   local primitive="$1"
-  local arg0="${stack[$frame_ptr]}"
-  local arg1="${stack[$((frame_ptr+1))]}"
-  local arg2="${stack[$((frame_ptr+2))]}"
+  local arg=()
+  fp=0
+  for x in "${stack[@]}"
+  do
+    arg_ptr=$((frame_ptr+fp))
+    [[ $arg_ptr -ge $stack_ptr ]] && break
+    local arg[$fp]=${stack[$arg_ptr]}
+    fp=$(($fp + 1))
+  done 	 
 
   r=$NIL
   case $primitive in
-    $EQ)         [[ "$arg0" == "$arg1" ]] && r="$T" ;;
-    $NILP)       [[ "$arg0" == $NIL ]] && r="$T"    ;;
-    $CAR)        r="${car[$arg0]}"                  ;;
-    $CDR)        r="${cdr[$arg0]}"                  ;;
-    $CONS)       cons "$arg0" "$arg1"               ;;
+    $EQ)         [[ "${arg[0]}" == "${arg[1]}" ]] && r="$T" ;;
+    $NILP)       [[ "${arg[0]}" == $NIL ]] && r="$T"    ;;
+    $CAR)        r="${car[${arg[0]}]}"                  ;;
+    $CDR)        r="${cdr[${arg[0]}]}"                  ;;
+    $CONS)       cons "${arg[0]}" "${arg[1]}"               ;;
     $LIST)       listify_args                       ;;
     $VECTOR)     vectify_args                       ;;
     $KEYWORD)
-      type "$arg0"
+      type "${arg[0]}"
       case $r in
-        string) make_keyword "$arg0" ;;
-        keyword) r="$arg0" ;;
+        string) make_keyword "${arg[0]}" ;;
+        keyword) r="${arg[0]}" ;;
         *)
-          strip_tag "$arg0"
+          strip_tag "${arg[0]}"
           error "Unable to make keyword from: $r"
           r="$NIL"
       esac
@@ -863,9 +869,9 @@ apply_primitive() {
       ;;
     $SPLIT)
       local i ret="$NIL" last=0
-      rev_str "$arg1" && local rev="$r"
+      rev_str "${arg[1]}" && local rev="$r"
       for ((i=0; i < ${#rev}; i++)); do
-        if [[ "${rev:$i:1}" == "$arg0" ]]; then
+        if [[ "${rev:$i:1}" == "${arg[0]}" ]]; then
           rev_str "${rev:$last:$((i - last))}"
           cons "$r" "$ret" && ret="$r"
           last="$((i + 1))"
@@ -878,91 +884,97 @@ apply_primitive() {
       r="$ret"
       ;;
     $GETENV)
-      [[ -n "$arg0" ]] && eval "r=\$${arg0}"
+      [[ -n "${arg[0]}" ]] && eval "r=\$${arg[0]}"
       [[ -z "$r" ]] && r=$NIL
       ;;
-    $EVAL)       lisp_eval "$arg0"    ;;
+    $EVAL)       lisp_eval "${arg[0]}"    ;;
     $READ)       lisp_read            ;;
     $MOD)
-      if check_numbers "$arg0" "$arg1" ; then
-        strip_tag "$arg0" && local x="$r"
-        strip_tag "$arg1" && local y="$r"
+      if check_numbers "${arg[0]}" "${arg[1]}" ; then
+        strip_tag "${arg[0]}" && local x="$r"
+        strip_tag "${arg[1]}" && local y="$r"
         make_integer $((x % y))
       fi
       ;;
     $LT)
-      if check_numbers "$arg0" "$arg1" ; then
-        strip_tag "$arg0" && local x="$r"
-        strip_tag "$arg1" && local y="$r"
+      if check_numbers "${arg[0]}" "${arg[1]}" ; then
+        strip_tag "${arg[0]}" && local x="$r"
+        strip_tag "${arg[1]}" && local y="$r"
         ((x < y)) && r=$T || r=$NIL
       fi
       ;;
     $GT)
-      if check_numbers "$arg0" "$arg1" ; then
-        strip_tag "$arg0" && local x="$r"
-        strip_tag "$arg1" && local y="$r"
+      if check_numbers "${arg[0]}" "${arg[1]}" ; then
+        strip_tag "${arg[0]}" && local x="$r"
+        strip_tag "${arg[1]}" && local y="$r"
         ((x > y)) && r=$T || r=$NIL
       fi
       ;;
-    $CONSP)      typeP "$arg0" cons    && r=$T                                 ;;
-    $SYMBOLP)    typeP "$arg0" symbol  && r=$T || r=$NIL                       ;;
-    $NUMBERP)    typeP "$arg0" integer && r=$T || r=$NIL                       ;;
-    $STRINGP)    typeP "$arg0" string  && r=$T || r=$NIL                       ;;
-    $FNP)        typeP "$arg0" cons    && [[ "${car[$arg0]}" == $FN ]] && r=$T ;;
+    $CONSP)      typeP "${arg[0]}" cons    && r=$T                                 ;;
+    $SYMBOLP)    typeP "${arg[0]}" symbol  && r=$T || r=$NIL                       ;;
+    $NUMBERP)    typeP "${arg[0]}" integer && r=$T || r=$NIL                       ;;
+    $STRINGP)    typeP "${arg[0]}" string  && r=$T || r=$NIL                       ;;
+    $FNP)        typeP "${arg[0]}" cons    && [[ "${car[${arg[0]}]}" == $FN ]] && r=$T ;;
     $GC)         gc && r=$NIL                                                  ;;
     $GENSYM)     gensym                                                        ;;
     $ADD)
-      if check_numbers "$arg0" "$arg1" ; then
-        strip_tag "$arg0" && local x="$r"
-        strip_tag "$arg1" && local y="$r"
-        make_integer $((x + y))
+      local t=0
+      if check_numbers "${arg[@]}" ; then
+	for x in "${arg[@]}"
+	do
+	  strip_tag "$x" && local t=$((t + r))
+        done 	 
+        make_integer $t
       fi
       ;;
     $SUB)
-      if check_numbers "$arg0" "$arg1" ; then
-        strip_tag "$arg0" && local x="$r"
-        strip_tag "$arg1" && local y="$r"
-        make_integer $((x - y))
+      local t=''
+      if check_numbers "${arg[@]}" ; then
+	for x in "${arg[@]}"
+	do
+	  strip_tag "$x" && local t=$([[ -n $t ]] && echo $((t - r)) || echo $r)
+        done 	 
+        make_integer $t
       fi
       ;;
     $APPLY)
       local old_frame_ptr=$frame_ptr
       frame_ptr=$stack_ptr
-      type "$arg1"
+      type "${arg[1]}"
       case $r in
         cons)
-          while typeP "$arg1" cons; do
-            stack[$((stack_ptr++))]="${car[$arg1]}"
-            arg1="${cdr[$arg1]}"
+          while typeP "${arg[1]}" cons; do
+            stack[$((stack_ptr++))]="${car[${arg[1]}]}"
+            arg[1]="${cdr[${arg[1]}]}"
           done
-          [[ $arg1 != $NIL ]] && error "Bad argument to apply: not a proper list"
+          [[ ${arg[1]} != $NIL ]] && error "Bad argument to apply: not a proper list"
           ;;
         vector)
-          count_array "$arg1"
+          count_array "${arg[1]}"
           local len="$r"
           for ((i=0; i<len; i++)); do
-            vget "$arg1" "$i"
+            vget "${arg[1]}" "$i"
             stack[$((stack_ptr++))]="$r"
           done
           ;;
         *) error "Bad argument to apply: not a list"
       esac
       if [[ -z "$e" ]]; then
-        apply "$arg0"
+        apply "${arg[0]}"
       fi
       stack_ptr=$frame_ptr
       frame_ptr=$old_frame_ptr
       ;;
     $ERROR)
       printf 'lisp error: ' >&2
-      prn "$arg0"           >&2
+      prn "${arg[0]}"           >&2
       ;;
     $TYPE)
-      if [[ "$arg0" == $NIL ]]; then
+      if [[ "${arg[0]}" == $NIL ]]; then
         r=$NIL
       else
-        type "$arg0"
-        if [[ "$r" == cons ]] && [[ "${car[$arg0]}" == $FN ]]; then
+        type "${arg[0]}"
+        if [[ "$r" == cons ]] && [[ "${car[${arg[0]}]}" == $FN ]]; then
           intern_symbol "function"
         else
           intern_symbol "$r"
@@ -970,23 +982,28 @@ apply_primitive() {
       fi
       ;;
     $MUL)
-      if check_numbers "$arg0" "$arg1" ; then
-        strip_tag "$arg0" && local x="$r"
-        strip_tag "$arg1" && local y="$r"
-        make_integer $((x * y))
+      local t=1
+      if check_numbers "${arg[@]}" ; then
+	for x in "${arg[@]}"
+	do
+	  strip_tag "$x" && local t=$((t * r))
+        done 	 
+        make_integer $t
       fi
       ;;
     $DIV)
-      local x y
-      if check_numbers "$arg0" "$arg1" ; then
-        strip_tag $arg0 && x=$r
-        strip_tag $arg1 && y=$r
-        make_integer $((x / y))
+      local t=''
+      if check_numbers "${arg[@]}" ; then
+	for x in "${arg[@]}"
+	do
+	  strip_tag "$x" && local t=$([[ -n $t ]] && echo $((t / r)) || echo $r)
+        done 	 
+        make_integer $t
       fi
       ;;
     $RAND)
-      if check_numbers "$arg0" ; then
-        strip_tag $arg0
+      if check_numbers "${arg[0]}" ; then
+        strip_tag ${arg[0]}
         make_integer "$((RANDOM % r))"
       fi
       ;;
@@ -1007,31 +1024,31 @@ apply_primitive() {
       ;;
     $SH)
       local ret
-      eval "ret=\$(${arg0})"
+      eval "ret=\$(${arg[0]})"
       IFS=$'\n'
       string_list $(for i in $ret; do echo "$i"; done)
       IFS="$DEFAULT_IFS"
       ;;
     $SH_BANG)
-      eval "${arg0}"
+      eval "${arg[0]}"
       [[ $? == 0 ]] && r=$T || r=$NIL
       ;;
     $LOAD_FILE)
       local f
-      if [[ -r ${arg0} ]]; then
-        f="${arg0}"
-      elif [[ -r "${arg0}.gk" ]]; then
-        f="${arg0}.gk"
+      if [[ -r ${arg[0]} ]]; then
+        f="${arg[0]}"
+      elif [[ -r "${arg[0]}.gk" ]]; then
+        f="${arg[0]}.gk"
       fi
       if [[ "$f" != "" ]]; then
         eval_file "$f"
       else
-        echo "File not found: ${arg0}" >&2
+        echo "File not found: ${arg[0]}" >&2
         r="$NIL"
       fi
       ;;
     $EXIT)
-      strip_tag $arg0
+      strip_tag ${arg[0]}
       exit "$r"
       ;;
     *) strip_tag "$1" && error "unknown primitive function type: ${symbols[$r]}"
